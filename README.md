@@ -104,6 +104,7 @@
 git clone [https://github.com/your-username/ChromaZ.git](https://github.com/your-username/ChromaZ.git)
 cd ChromaZ
 mkdir build && cd build
-cmake ..
-make -j$(nproc)
+cmake src/.. && make -j$(nproc)
 ./ChromaZ
+```
+

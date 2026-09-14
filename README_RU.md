@@ -101,5 +101,10 @@
 - Qt 6.x (компоненты: `Core`, `Gui`, `Widgets`, `Test`)
 
 ### Сборка под Linux (Debian / Ubuntu / Fedora)
-
-\`\`\`bash git clone <https://github.com/your-username/ChromaZ.git> cd ChromaZ mkdir build && cd build cmake .. make -j\$(nproc) ./ChromaZ
+```bash
+git clone [https://github.com/your-username/ChromaZ.git](https://github.com/your-username/ChromaZ.git)
+cd ChromaZ
+mkdir build && cd build
+cmake src/.. && make -j$(nproc)
+./ChromaZ
+```
