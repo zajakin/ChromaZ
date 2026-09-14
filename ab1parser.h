@@ -26,6 +26,7 @@ using FastqRecord = SequenceRecord;
 class Ab1Parser {
 public:
   static Ab1Data parse(const QString &filePath);
+  static Ab1Data parseScf(const QString &filePath);
   static QString reverseComplement(const QString &seq);
   static Ab1Data getOrientedData(const Ab1Data &orig, bool isRC);
 };

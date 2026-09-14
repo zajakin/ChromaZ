@@ -15,6 +15,20 @@ struct DirEntry {
   uint32_t dataOffset;
 };
 
+struct ScfHeader {
+  uint32_t magic;
+  uint32_t samples;
+  uint32_t samples_offset;
+  uint32_t bases;
+  uint32_t bases_left_clip;
+  uint32_t bases_right_clip;
+  uint32_t bases_offset;
+  uint32_t comments_size;
+  uint32_t comments_offset;
+  char version[4];
+  uint32_t sample_size;
+};
+
 QString Ab1Parser::reverseComplement(const QString &seq) {
   QString res = "";
   for (int i = seq.length() - 1; i >= 0; --i) {
@@ -60,7 +74,70 @@ Ab1Data Ab1Parser::getOrientedData(const Ab1Data &orig, bool isRC) {
   return res;
 }
 
+// Парсинг хроматограмм формата Staden SCF (v2 / v3)
+Ab1Data Ab1Parser::parseScf(const QString &filePath) {
+  Ab1Data data;
+  QFile file(filePath);
+  if (!file.open(QIODevice::ReadOnly)) {
+    data.errorMessage = "Не удалось открыть SCF файл";
+    return data;
+  }
+  
+  QDataStream in(&file);
+  in.setByteOrder(QDataStream::BigEndian);
+  
+  ScfHeader hdr;
+  in >> hdr.magic >> hdr.samples >> hdr.samples_offset >> hdr.bases 
+     >> hdr.bases_left_clip >> hdr.bases_right_clip >> hdr.bases_offset
+     >> hdr.comments_size >> hdr.comments_offset;
+     in.readRawData(hdr.version, 4);
+     in >> hdr.sample_size;
+     
+     if (hdr.magic != 0x2e736366) { // ".scf"
+       data.errorMessage = "Невалидный формат SCF";
+       return data;
+     }
+     
+     file.seek(hdr.samples_offset);
+     uint32_t numSamples = hdr.samples;
+     data.traceA.resize(numSamples);
+     data.traceC.resize(numSamples);
+     data.traceG.resize(numSamples);
+     data.traceT.resize(numSamples);
+     
+     for (uint32_t i = 0; i < numSamples; ++i) {
+       if (hdr.sample_size == 1) {
+         uint8_t a, c, g, t; in >> a >> c >> g >> t;
+         data.traceA[i] = a; data.traceC[i] = c; data.traceG[i] = g; data.traceT[i] = t;
+       } else {
+         uint16_t a, c, g, t; in >> a >> c >> g >> t;
+         data.traceA[i] = a; data.traceC[i] = c; data.traceG[i] = g; data.traceT[i] = t;
+       }
+     }
+     
+     file.seek(hdr.bases_offset);
+     for (uint32_t i = 0; i < hdr.bases; ++i) {
+       uint32_t pos; in >> pos;
+       data.basePositions.push_back(pos);
+     }
+     
+     file.seek(hdr.bases_offset + hdr.bases * 12);
+     QByteArray seqBytes = file.read(hdr.bases);
+     data.sequence = QString::fromLatin1(seqBytes).toUpper();
+     
+     for (uint32_t i = 0; i < hdr.bases; ++i) {
+       data.qualityScores.push_back(30);
+     }
+     
+     data.isValid = true;
+     return data;
+}
+
 Ab1Data Ab1Parser::parse(const QString &filePath) {
+  if (filePath.endsWith(".scf", Qt::CaseInsensitive)) {
+    return parseScf(filePath);
+  }
+  
   Ab1Data data;
   QFile file(filePath);
   if (!file.open(QIODevice::ReadOnly)) {
@@ -74,8 +151,7 @@ Ab1Data Ab1Parser::parse(const QString &filePath) {
   char magic[4];
   in.readRawData(magic, 4);
   if (std::memcmp(magic, "ABIF", 4) != 0) {
-    data.errorMessage = "Невалидный ABIF формат";
-    return data;
+    return parseScf(filePath);
   }
   
   uint16_t version;
@@ -173,7 +249,6 @@ QString SequenceFileParser::parseFastaOrGb(const QString &filePath) {
   return "";
 }
 
-// Парсинг мульти-записных FASTA / GenBank файлов
 std::vector<SequenceRecord> SequenceFileParser::parseFastaOrGbRecords(const QString &filePath) {
   std::vector<SequenceRecord> records;
   QFile file(filePath);
@@ -226,7 +301,6 @@ std::vector<SequenceRecord> SequenceFileParser::parseFastaOrGbRecords(const QStr
   return records;
 }
 
-// Парсинг FASTQ файлов с поддержкой множества прочтений
 std::vector<SequenceRecord> SequenceFileParser::parseFastq(const QString &filePath) {
   std::vector<SequenceRecord> records;
   QFile file(filePath);
@@ -264,7 +338,6 @@ std::vector<SequenceRecord> SequenceFileParser::parseFastq(const QString &filePa
   return records;
 }
 
-// Парсинг простых текстовых файлов (.txt), где каждая строка — отдельный сиквенс
 std::vector<SequenceRecord> SequenceFileParser::parseTxt(const QString &filePath) {
   std::vector<SequenceRecord> records;
   QFile file(filePath);

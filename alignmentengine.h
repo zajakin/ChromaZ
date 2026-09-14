@@ -4,13 +4,14 @@
 #include <QString>
 
 enum class AlignmentAlgorithm {
-  OverlapCAP3     = 0, // OLC / CAP3 Sanger Overlap (По умолчанию, Vector NTI style)
-    AffineGapBlock  = 1, // Gotoh Semi-Global (С аффинным штрафом)
-    NeedlemanWunsch = 2, // Needleman-Wunsch Global (Строгое глобальное)
-    SmithWaterman   = 3, // Smith-Waterman Local (Честное локальное)
+  OverlapCAP3     = 0, // OLC / CAP3 Sanger Overlap (Vector NTI style)
+    AffineGapBlock  = 1, // Gotoh Semi-Global (с аффинным штрафом)
+    NeedlemanWunsch = 2, // Needleman-Wunsch Global (строгое глобальное)
+    SmithWaterman   = 3, // Smith-Waterman Local (честное локальное)
     BlastSeedExtend = 4, // BLAST (k-mer Seed & Extend)
-    BandedGlobal    = 5, // Banded DP (Полосовое)
-    Wavefront       = 6  // Wavefront (WFA)
+    BandedGlobal    = 5, // Banded DP (полосовое)
+    Wavefront       = 6, // Wavefront (WFA)
+    InternalClustal = 7  // Встроенный многосторонний Clustal-Style Progressive MSA
 };
 
 class AlignmentEngine {

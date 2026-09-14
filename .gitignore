@@ -35,7 +35,7 @@
 *.lib
 
 # Executables
-*.exe
+#*.exe
 *.out
 *.app
 
@@ -43,6 +43,7 @@
 build/
 Build/
 build-*/
+win/
 
 # CMake generated files
 CMakeFiles/
@@ -68,3 +69,7 @@ vcpkg_installed/
 Testing/
 .cache/
 .Rproj.user
+.Rhistory
+data/
+f2p_*
+

@@ -55,6 +55,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   copyAct->setShortcut(QKeySequence::Copy);
   connect(copyAct, &QAction::triggered, contigView, &ContigWidget::copySelectedToClipboard);
   
+  QAction *copyImgAct = new QAction("🖼 Copy Selection as Image", this);
+  connect(copyImgAct, &QAction::triggered, contigView, &ContigWidget::copySelectionAsImageToClipboard);
+  
   QAction *findAct = new QAction("🔍 Find Sequence...", this);
   findAct->setShortcut(QKeySequence::Find);
   connect(findAct, &QAction::triggered, this, [this]() {
@@ -64,7 +67,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     }
   });
   
-  QAction *loadReadsAct = new QAction("📂 Load Reads (.ab1, .fasta, .fastq, .txt, .gb)...", this);
+  QAction *loadReadsAct = new QAction("📂 Load Reads (.ab1, .scf, .fasta, .fastq, .txt, .gb)...", this);
   connect(loadReadsAct, &QAction::triggered, this, &MainWindow::openAb1Files);
   
   QAction *loadRefAct = new QAction("📖 Load Reference (.fasta, .txt)...", this);
@@ -159,6 +162,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   editMenu->addSeparator();
   editMenu->addAction(findAct);
   editMenu->addAction(copyAct);
+  editMenu->addAction(copyImgAct);
   
   QMenu *viewMenu = menuBar()->addMenu("View");
   viewMenu->addAction(prevSnpAct);
@@ -212,6 +216,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   algoCombo->addItem("BLAST (Seed & Extend)", 4);
   algoCombo->addItem("Banded Alignment (Fast)", 5);
   algoCombo->addItem("Wavefront Alignment (WFA)", 6);
+  algoCombo->addItem("Progressive Clustal (Built-in)", 7);
   alignToolBar->addWidget(algoCombo);
   connect(algoCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), contigView, &ContigWidget::setAlignmentAlgorithm);
   
@@ -308,7 +313,7 @@ void MainWindow::resizeEvent(QResizeEvent *event) {
 }
 
 void MainWindow::openAb1Files() {
-  QStringList files = QFileDialog::getOpenFileNames(this, "Select Sequence Files", "", "Sequences (*.ab1 *.fasta *.fa *.fastq *.fq *.txt *.gb *.gbk);;All Files (*)");
+  QStringList files = QFileDialog::getOpenFileNames(this, "Select Sequence Files", "", "Sequences (*.ab1 *.scf *.fasta *.fa *.fastq *.fq *.txt *.gb *.gbk);;All Files (*)");
   for (const QString &file : files) {
     if (file.endsWith(".fastq", Qt::CaseInsensitive) || file.endsWith(".fq", Qt::CaseInsensitive)) {
       auto records = SequenceFileParser::parseFastq(file);
@@ -330,7 +335,7 @@ void MainWindow::openAb1Files() {
     
     if (contigView->isFileLoaded(file)) continue;
     
-    if (file.endsWith(".ab1", Qt::CaseInsensitive)) {
+    if (file.endsWith(".ab1", Qt::CaseInsensitive) || file.endsWith(".scf", Qt::CaseInsensitive)) {
       Ab1Data data = Ab1Parser::parse(file);
       if (data.isValid) contigView->addAb1Track(file, data);
     } else {

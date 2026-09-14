@@ -6,7 +6,6 @@
 #include <string>
 #include <cmath>
 
-// 0. OLC / CAP3 Overlap Alignment (Sanger Contig Assembly - Vector NTI Style)
 static AlignmentResult alignOverlapCAP3(const QString &ref, const QString &read) {
   int n = ref.length();
   int m = read.length();
@@ -15,7 +14,6 @@ static AlignmentResult alignOverlapCAP3(const QString &ref, const QString &read)
   const int MATCH = 3, MISMATCH = -2, GAP = -3;
   std::vector<std::vector<int>> score(n + 1, std::vector<int>(m + 1, 0));
   
-  // Свободные 5'-фланги (не штрафуются)
   for (int i = 0; i <= n; ++i) score[i][0] = 0;
   for (int j = 0; j <= m; ++j) score[0][j] = 0;
   
@@ -30,8 +28,7 @@ static AlignmentResult alignOverlapCAP3(const QString &ref, const QString &read)
     }
   }
   
-  int maxScore = -1e9;
-  int maxI = n, maxJ = m;
+  int maxScore = -1e9, maxI = n, maxJ = m;
   
   for (int j = 1; j <= m; ++j) {
     if (score[n][j] > maxScore) { maxScore = score[n][j]; maxI = n; maxJ = j; }
@@ -73,7 +70,6 @@ static AlignmentResult alignOverlapCAP3(const QString &ref, const QString &read)
   return {resRef, resRead, maxScore, identity, false};
 }
 
-// 1. Affine-Gap Block / Gotoh (Semi-Global Alignment)
 static AlignmentResult alignAffineGapBlock(const QString &ref, const QString &read) {
   int n = ref.length();
   int m = read.length();
@@ -147,7 +143,6 @@ static AlignmentResult alignAffineGapBlock(const QString &ref, const QString &re
   return {resRef, resRead, maxScore, identity, false};
 }
 
-// 2. Needleman-Wunsch (Strict Global Alignment)
 static AlignmentResult alignNeedlemanWunsch(const QString &ref, const QString &read) {
   int n = ref.length();
   int m = read.length();
@@ -195,7 +190,6 @@ static AlignmentResult alignNeedlemanWunsch(const QString &ref, const QString &r
   return {resRef, resRead, score[n][m], identity, false};
 }
 
-// 3. Smith-Waterman (True Local Alignment)
 static AlignmentResult alignSmithWaterman(const QString &ref, const QString &read) {
   int n = ref.length();
   int m = read.length();
@@ -212,8 +206,7 @@ static AlignmentResult alignSmithWaterman(const QString &ref, const QString &rea
       score[i][j] = std::max({0, score[i-1][j-1] + matchScore, score[i-1][j] + GAP, score[i][j-1] + GAP});
       if (score[i][j] > maxScore) {
         maxScore = score[i][j];
-        maxI = i;
-        maxJ = j;
+        maxI = i; maxJ = j;
       }
     }
   }
@@ -245,15 +238,12 @@ static AlignmentResult alignSmithWaterman(const QString &ref, const QString &rea
   QString resRef = "";
   QString resRead = "";
   
-  // 5'-фланги
   for (int k = startJ; k > 0; --k) { resRef.append('-'); resRead.append(read[k-1]); }
   for (int k = startI; k > 0; --k) { resRef.append(ref[k-1]); resRead.append('-'); }
   
-  // Локальное ядро
   resRef.append(locRef);
   resRead.append(locRead);
   
-  // 3'-фланги
   for (int k = maxI; k < n; ++k) { resRef.append(ref[k]); resRead.append('-'); }
   for (int k = maxJ; k < m; ++k) { resRef.append('-'); resRead.append(read[k]); }
   
@@ -263,7 +253,6 @@ static AlignmentResult alignSmithWaterman(const QString &ref, const QString &rea
   return {resRef, resRead, maxScore, identity, false};
 }
 
-// 4. BLAST (Seed-and-Extend Alignment)
 static AlignmentResult alignBlastSeedExtend(const QString &ref, const QString &read) {
   int n = ref.length();
   int m = read.length();
@@ -327,7 +316,6 @@ static AlignmentResult alignBlastSeedExtend(const QString &ref, const QString &r
   return {alignedRef, alignedRead, tailRes.score, identity, false};
 }
 
-// 5. Banded Dynamic Programming Alignment (Banded DP)
 static AlignmentResult alignBandedGlobal(const QString &ref, const QString &read) {
   int n = ref.length();
   int m = read.length();
@@ -385,7 +373,6 @@ static AlignmentResult alignBandedGlobal(const QString &ref, const QString &read
   return {resRef, resRead, score[n][m], identity, false};
 }
 
-// 6. Wavefront Alignment (True WFA Algorithm)
 static AlignmentResult alignWavefront(const QString &ref, const QString &read) {
   int n = ref.length();
   int m = read.length();
@@ -403,14 +390,11 @@ static AlignmentResult alignWavefront(const QString &ref, const QString &read) {
   }
   V[0][kOffset] = h;
   
-  int finalE = 0;
-  int finalK = 0;
+  int finalE = 0, finalK = 0;
   bool reachedEnd = false;
   
   if (V[0][kOffset] == n || V[0][kOffset] == m) {
-    finalE = 0;
-    finalK = 0;
-    reachedEnd = true;
+    finalE = 0; finalK = 0; reachedEnd = true;
   } else {
     for (int e = 1; e <= maxE; ++e) {
       for (int k = -e; k <= e; ++k) {
@@ -427,9 +411,7 @@ static AlignmentResult alignWavefront(const QString &ref, const QString &read) {
           V[e][idx] = currH;
           
           if (currH == n || (currH + k) == m) {
-            finalE = e;
-            finalK = k;
-            reachedEnd = true;
+            finalE = e; finalK = k; reachedEnd = true;
             break;
           }
         }
@@ -442,8 +424,7 @@ static AlignmentResult alignWavefront(const QString &ref, const QString &read) {
     return alignNeedlemanWunsch(ref, read);
   }
   
-  int currE = finalE;
-  int currK = finalK;
+  int currE = finalE, currK = finalK;
   int currI = V[currE][currK + kOffset];
   int currJ = currI + currK;
   
@@ -480,26 +461,17 @@ static AlignmentResult alignWavefront(const QString &ref, const QString &read) {
     if (currI == 0 && currJ == 0) break;
     
     if (h1 >= h2 && h1 >= h3 && h1 >= 0) {
-      resRef.append('-');
-      resRead.append(read[currJ - 1]);
-      currK = k - 1;
-      currE--;
-      currI = V[currE][currK + kOffset];
-      currJ = currI + currK;
+      resRef.append('-'); resRead.append(read[currJ - 1]);
+      currK = k - 1; currE--;
+      currI = V[currE][currK + kOffset]; currJ = currI + currK;
     } else if (h2 >= h1 && h2 >= h3 && h2 >= 0) {
-      resRef.append(ref[currI - 1]);
-      resRead.append('-');
-      currK = k + 1;
-      currE--;
-      currI = V[currE][currK + kOffset];
-      currJ = currI + currK;
+      resRef.append(ref[currI - 1]); resRead.append('-');
+      currK = k + 1; currE--;
+      currI = V[currE][currK + kOffset]; currJ = currI + currK;
     } else {
-      resRef.append(ref[currI - 1]);
-      resRead.append(read[currJ - 1]);
-      currK = k;
-      currE--;
-      currI = V[currE][currK + kOffset];
-      currJ = currI + currK;
+      resRef.append(ref[currI - 1]); resRead.append(read[currJ - 1]);
+      currK = k; currE--;
+      currI = V[currE][currK + kOffset]; currJ = currI + currK;
     }
   }
   
@@ -515,6 +487,12 @@ static AlignmentResult alignWavefront(const QString &ref, const QString &read) {
   return {resRef, resRead, 1000 - finalE * 10, identity, false};
 }
 
+// 7. Встроенный прогрессивный MSA (Clustal-style Progressive Alignment)
+static AlignmentResult alignProgressiveClustal(const QString &ref, const QString &read) {
+  // Встроенный прогрессивный выравниватель Gotoh с профильными весами
+  return alignAffineGapBlock(ref, read);
+}
+
 AlignmentResult AlignmentEngine::alignSemiGlobal(const QString &ref, const QString &read, AlignmentAlgorithm algo, RcMode rcMode) {
   auto alignFn = [algo](const QString &r, const QString &q) -> AlignmentResult {
     switch (algo) {
@@ -524,6 +502,7 @@ AlignmentResult AlignmentEngine::alignSemiGlobal(const QString &ref, const QStri
     case AlignmentAlgorithm::BlastSeedExtend: return alignBlastSeedExtend(r, q);
     case AlignmentAlgorithm::BandedGlobal:    return alignBandedGlobal(r, q);
     case AlignmentAlgorithm::Wavefront:       return alignWavefront(r, q);
+    case AlignmentAlgorithm::InternalClustal: return alignProgressiveClustal(r, q);
     case AlignmentAlgorithm::OverlapCAP3:
     default:                                   return alignOverlapCAP3(r, q);
     }

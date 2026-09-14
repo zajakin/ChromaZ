@@ -18,6 +18,9 @@ static const int SEL_CONSENSUS = -2;
 static const int SEL_ORF1 = -3;
 static const int SEL_ORF2 = -4;
 static const int SEL_ORF3 = -5;
+static const int SEL_ORF_REV1 = -6;
+static const int SEL_ORF_REV2 = -7;
+static const int SEL_ORF_REV3 = -8;
 
 struct AlignedTrack {
   QString filePath;
@@ -89,6 +92,7 @@ public:
   void increaseTrackHeight(); void decreaseTrackHeight();
   void resetZoom();
   void copySelectedToClipboard();
+  void copySelectionAsImageToClipboard();
   
 protected:
   void paintEvent(QPaintEvent *event) override;
@@ -144,7 +148,7 @@ private:
   double scaleX = 14.0;
   double scaleY = 0.05;
   int trackHeight = 120;
-  int trackStartY = 120;
+  int trackStartY = 160;
   
   int selTrack = SEL_NONE;      
   int selStartCol = -1;   

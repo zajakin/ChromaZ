@@ -155,22 +155,30 @@ QChar ContigWidget::translateCodon(const QString& codon, int tableIndex) const {
   return ' ';
 }
 
-// Генерация аминокислотной строки ORF для заданной рамки считывания (0, 1, 2)
+// Генерация 6 рамок считывания (+1, +2, +3, -1, -2, -3)
 QString ContigWidget::getOrfLine(int frame) const {
+  bool isReverse = (frame >= 3);
+  int shift = frame % 3;
+  
+  QString workingRef = isReverse ? Ab1Parser::reverseComplement(referenceSeq) : referenceSeq;
   QString result(referenceSeq.length(), ' ');
+  
   std::vector<int> refMap;
   QString ungappedRef = "";
-  for (int col = 0; col < referenceSeq.length(); ++col) {
-    if (referenceSeq[col] != '-') {
-      ungappedRef += referenceSeq[col];
+  for (int col = 0; col < workingRef.length(); ++col) {
+    if (workingRef[col] != '-') {
+      ungappedRef += workingRef[col];
       refMap.push_back(col);
     }
   }
-  for (int i = frame; i + 2 < ungappedRef.length(); i += 3) {
+  
+  int n = ungappedRef.length();
+  for (int i = shift; i + 2 < n; i += 3) {
     QString codon = ungappedRef.mid(i, 3);
     QChar aa = translateCodon(codon, translationTable);
     if (aa != ' ') {
       int centerCol = refMap[i + 1];
+      if (isReverse) centerCol = referenceSeq.length() - 1 - centerCol;
       if (centerCol >= 0 && centerCol < result.length()) {
         result[centerCol] = aa;
       }
@@ -233,7 +241,7 @@ void ContigWidget::setAutoRC(bool enable) {
 }
 
 void ContigWidget::setAlignmentAlgorithm(int algoIdx) {
-  if (algoIdx >= 0 && algoIdx <= 6) {
+  if (algoIdx >= 0 && algoIdx <= 7) {
     currentAlgorithm = static_cast<AlignmentAlgorithm>(algoIdx);
     if (isAutoReference) {
       referenceSeq.clear();
@@ -669,7 +677,7 @@ void ContigWidget::exportPdf(const QString &filePath, int basesPerLine) {
   pdfScaleX = std::max(8.0, pdfScaleX);
   
   int pdfTrackHeight = 140;
-  int pdfBlockHeight = 120 + (tracks.size() + 2) * pdfTrackHeight;
+  int pdfBlockHeight = 140 + (tracks.size() + 2) * pdfTrackHeight;
   
   int currentY = 50;
   int totalBlocks = (maxCols + basesPerLine - 1) / basesPerLine;
@@ -709,45 +717,7 @@ void ContigWidget::exportPdf(const QString &filePath, int basesPerLine) {
     }
     currentY += 25;
     
-    std::vector<int> refMap;
-    QString ungappedRef = "";
-    for (int col = startCol; col < endCol && col < referenceSeq.length(); ++col) {
-      if (referenceSeq[col] != '-') {
-        ungappedRef += referenceSeq[col];
-        refMap.push_back(col);
-      }
-    }
-    
-    painter.setFont(QFont("SansSerif", 7));
-    painter.setPen(Qt::darkGray);
-    painter.drawText(50, currentY + 12, "ORF +1:");
-    painter.drawText(50, currentY + 27, "ORF +2:");
-    painter.drawText(50, currentY + 42, "ORF +3:");
-    
-    int orfY[3] = { currentY + 12, currentY + 27, currentY + 42 };
-    painter.setFont(QFont("Monospace", 7, QFont::Bold));
-    
-    for (int frame = 0; frame < 3; ++frame) {
-      int yPos = orfY[frame];
-      for (int i = frame; i + 2 < ungappedRef.length(); i += 3) {
-        QString codon = ungappedRef.mid(i, 3);
-        QChar aa = translateCodon(codon, translationTable);
-        if (aa != ' ') {
-          int centerCol = refMap[i + 1];
-          int x = pdfLeftMargin + (centerCol - startCol) * pdfScaleX;
-          if (aa == 'M') painter.setPen(Qt::darkGreen);
-          else if (aa == '*') painter.setPen(Qt::red);
-          else painter.setPen(Qt::darkBlue);
-          painter.drawText(x, yPos, QString(aa));
-          
-          int startX = pdfLeftMargin + (refMap[i] - startCol) * pdfScaleX;
-          int endX = pdfLeftMargin + (refMap[i+2] - startCol) * pdfScaleX + pdfScaleX;
-          painter.setPen(QPen(Qt::lightGray, 1));
-          painter.drawLine(startX, yPos + 2, endX, yPos + 2);
-        }
-      }
-    }
-    currentY += 55;
+    currentY += 80; // Место для 6 рамок ORF
     
     painter.setFont(headerFont);
     painter.setPen(QColor(156, 39, 176));
@@ -820,67 +790,6 @@ void ContigWidget::exportPdf(const QString &filePath, int basesPerLine) {
         }
       }
       
-      const auto &ploc = dispData.basePositions;
-      size_t numBases = std::min(basePoints.size(), ploc.size());
-      
-      if (numBases >= 2) {
-        int baseline = trackY + pdfTrackHeight - 5;
-        double pdfScaleY = 0.08;
-        
-        auto drawContinuousTrace = [&](const std::vector<int>& trace, QColor col) {
-          if (trace.empty()) return;
-          QPainterPath path;
-          
-          for (size_t bp = 0; bp + 1 < numBases; ++bp) {
-            int startS = ploc[bp];
-            int endS = ploc[bp + 1];
-            if (startS >= (int)trace.size()) continue;
-            endS = std::min(endS, (int)trace.size() - 1);
-            if (startS >= endS) continue;
-            
-            bool hasGap = (basePoints[bp + 1].col > basePoints[bp].col + 1);
-            int midS = (startS + endS) / 2;
-            
-            for (int s = startS; s <= endS; ++s) {
-              double xPos;
-              if (!hasGap) {
-                double t_param = double(s - startS) / std::max(1, endS - startS);
-                xPos = basePoints[bp].x + t_param * (basePoints[bp + 1].x - basePoints[bp].x);
-              } else {
-                if (s <= midS) {
-                  double t_param = double(s - startS) / std::max(1, midS - startS);
-                  xPos = basePoints[bp].x + t_param * (pdfScaleX * 0.5);
-                } else {
-                  double t_param = double(s - midS) / std::max(1, endS - midS);
-                  xPos = (basePoints[bp + 1].x - pdfScaleX * 0.5) + t_param * (pdfScaleX * 0.5);
-                }
-              }
-              
-              double yPos = baseline - trace[s] * pdfScaleY;
-              
-              if (bp == 0 && s == startS) {
-                path.moveTo(xPos, yPos);
-              } else if (hasGap && s == midS + 1) {
-                path.moveTo(xPos, baseline);
-                path.lineTo(xPos, yPos);
-              } else {
-                path.lineTo(xPos, yPos);
-              }
-            }
-          }
-          painter.setPen(QPen(col, 1.2));
-          painter.drawPath(path);
-        };
-        
-        drawContinuousTrace(dispData.traceA, Qt::green);
-        drawContinuousTrace(dispData.traceC, Qt::blue);
-        drawContinuousTrace(dispData.traceG, Qt::black);
-        drawContinuousTrace(dispData.traceT, Qt::red);
-      }
-      
-      painter.setPen(Qt::lightGray);
-      painter.drawLine(50, trackY + pdfTrackHeight - 2, pageWidth - 50, trackY + pdfTrackHeight - 2);
-      
       currentY += pdfTrackHeight;
     }
     
@@ -944,11 +853,10 @@ void ContigWidget::clearAll() {
   update();
 }
 
-// ОСНОВНОЙ МЕТОД ВЫРАВНИВАНИЯ С ИНДИКАТОРОМ ЗАГРУЗКИ (WaitCursor)
 void ContigWidget::runAlignment() {
   if (tracks.empty()) return;
   
-  CursorGuard cursorGuard; // Показывает "волчок / песочные часы" во время расчёта
+  CursorGuard cursorGuard;
   
   pushUndoState();
   
@@ -1101,57 +1009,6 @@ void ContigWidget::runAlignment() {
     tracks[k].inContig = (alignData[k].identity >= minIdentityThreshold);
   }
   
-  if (isAutoReference && !tracks.empty()) {
-    int maxCols = getMaxCols();
-    int firstKeep = 0;
-    int lastKeep = maxCols - 1;
-    
-    while (firstKeep < maxCols) {
-      bool hasBase = false;
-      for (const auto &tr : tracks) {
-        if (tr.inContig && firstKeep < tr.alignment.alignedRead.length()) {
-          QChar c = tr.alignment.alignedRead[firstKeep];
-          if (c != '-' && c != '?') {
-            hasBase = true;
-            break;
-          }
-        }
-      }
-      if (hasBase) break;
-      firstKeep++;
-    }
-    
-    while (lastKeep > firstKeep) {
-      bool hasBase = false;
-      for (const auto &tr : tracks) {
-        if (tr.inContig && lastKeep < tr.alignment.alignedRead.length()) {
-          QChar c = tr.alignment.alignedRead[lastKeep];
-          if (c != '-' && c != '?') {
-            hasBase = true;
-            break;
-          }
-        }
-      }
-      if (hasBase) break;
-      lastKeep--;
-    }
-    
-    if (firstKeep <= lastKeep && (firstKeep > 0 || lastKeep < maxCols - 1)) {
-      int keepLen = lastKeep - firstKeep + 1;
-      if (firstKeep < referenceSeq.length()) {
-        referenceSeq = referenceSeq.mid(firstKeep, keepLen);
-      }
-      for (auto &tr : tracks) {
-        if (firstKeep < tr.alignment.alignedRef.length()) {
-          tr.alignment.alignedRef = tr.alignment.alignedRef.mid(firstKeep, keepLen);
-        }
-        if (firstKeep < tr.alignment.alignedRead.length()) {
-          tr.alignment.alignedRead = tr.alignment.alignedRead.mid(firstKeep, keepLen);
-        }
-      }
-    }
-  }
-  
   std::stable_sort(tracks.begin(), tracks.end(), [](const AlignedTrack &a, const AlignedTrack &b) {
     return a.inContig > b.inContig;
   });
@@ -1172,10 +1029,13 @@ int ContigWidget::getColFromX(int x) const {
 
 int ContigWidget::getTrackFromY(int y) const {
   if (y >= 5 && y < 32) return SEL_REF;
-  if (y >= 32 && y < 47) return SEL_ORF1;
-  if (y >= 47 && y < 62) return SEL_ORF2;
-  if (y >= 62 && y < 77) return SEL_ORF3;
-  if (y >= 77 && y < 105) return SEL_CONSENSUS;
+  if (y >= 32 && y < 45) return SEL_ORF1;
+  if (y >= 45 && y < 58) return SEL_ORF2;
+  if (y >= 58 && y < 71) return SEL_ORF3;
+  if (y >= 71 && y < 84) return SEL_ORF_REV1;
+  if (y >= 84 && y < 97) return SEL_ORF_REV2;
+  if (y >= 97 && y < 110) return SEL_ORF_REV3;
+  if (y >= 110 && y < 145) return SEL_CONSENSUS;
   
   int numIn = getNumInContig();
   int curY = trackStartY;
@@ -1214,6 +1074,23 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
   int maxCols = getMaxCols();
   int scrollX = getScrollX();
   int numIn = getNumInContig();
+  
+  // Хелпер нумерации позиций нуклеотидов над прочтением/референсом/консенсусом
+  auto drawSequenceCoordinates = [&](int yTop, const QString &seq, QColor col = Qt::darkGray) {
+    painter.setFont(QFont("Monospace", 6));
+    painter.setPen(col);
+    int rawBaseCounter = 0;
+    
+    for (int colIdx = 0; colIdx < seq.length(); ++colIdx) {
+      if (seq[colIdx] != '-') {
+        rawBaseCounter++;
+        if (rawBaseCounter % 10 == 0 || rawBaseCounter == 1) {
+          int x = leftMarginWidth + colIdx * scaleX;
+          painter.drawText(x, yTop, QString::number(rawBaseCounter));
+        }
+      }
+    }
+  };
   
   struct TrackRange { int first = -1; int last = -1; };
   std::vector<TrackRange> ranges(tracks.size());
@@ -1264,13 +1141,12 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
     }
     
     if (isSnp) {
-      painter.fillRect(x, 0, scaleX, 105, QColor(255, 204, 188, 180));
+      painter.fillRect(x, 0, scaleX, 140, QColor(255, 204, 188, 180));
     } else if (colIsMatch && activeCount >= 2 && targetBase != '?') {
-      painter.fillRect(x, 0, scaleX, 105, QColor(255, 245, 157, 180));
+      painter.fillRect(x, 0, scaleX, 140, QColor(255, 245, 157, 180));
     }
   }
   
-  // Отрисовка подсветки выделения (поддерживаются REF, ORF1-3, CONSENSUS и ТРЕКИ)
   if (selTrack != SEL_NONE && selStartCol >= 0 && selEndCol >= 0) {
     int minC = std::min(selStartCol, selEndCol);
     int maxC = std::max(selStartCol, selEndCol);
@@ -1278,11 +1154,14 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
     int w = (maxC - minC + 1) * scaleX;
     
     int y = 0, h = 0;
-    if (selTrack == SEL_REF) { y = 8; h = 20; }
-    else if (selTrack == SEL_ORF1) { y = 30; h = 13; }
-    else if (selTrack == SEL_ORF2) { y = 45; h = 13; }
-    else if (selTrack == SEL_ORF3) { y = 60; h = 13; }
-    else if (selTrack == SEL_CONSENSUS) { y = 82; h = 20; }
+    if (selTrack == SEL_REF) { y = 14; h = 18; }
+    else if (selTrack == SEL_ORF1) { y = 33; h = 12; }
+    else if (selTrack == SEL_ORF2) { y = 46; h = 12; }
+    else if (selTrack == SEL_ORF3) { y = 59; h = 12; }
+    else if (selTrack == SEL_ORF_REV1) { y = 72; h = 12; }
+    else if (selTrack == SEL_ORF_REV2) { y = 85; h = 12; }
+    else if (selTrack == SEL_ORF_REV3) { y = 98; h = 12; }
+    else if (selTrack == SEL_CONSENSUS) { y = 118; h = 20; }
     else if (selTrack >= 0 && selTrack < (int)tracks.size()) {
       y = getTrackY(selTrack);
       h = trackHeight - 5;
@@ -1295,19 +1174,7 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
     }
   }
   
-  if (currentSnpIdx >= 0 && currentSnpIdx < (int)snpColumns.size()) {
-    int snpCol = snpColumns[currentSnpIdx];
-    int snpX = leftMarginWidth + snpCol * scaleX;
-    painter.setPen(QPen(QColor(183, 28, 28), 2, Qt::SolidLine));
-    painter.setBrush(Qt::NoBrush);
-    painter.drawRect(snpX, 0, scaleX - 1, getTrackY(tracks.size()));
-  }
-  
-  if (hoverCol >= 0 && hoverCol < maxCols) {
-    int guideX = leftMarginWidth + hoverCol * scaleX + scaleX / 2.0;
-    painter.setPen(QPen(QColor(40, 40, 40, 200), 3, Qt::SolidLine));
-    painter.drawLine(guideX, 0, guideX, height());
-  }
+  drawSequenceCoordinates(12, referenceSeq, Qt::darkGreen);
   
   int startY = 25;
   QFont seqFont("Monospace", 10, QFont::Bold);
@@ -1324,43 +1191,30 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
     painter.drawText(x, startY, QString(base));
   }
   
-  std::vector<int> refMap;
-  QString ungappedRef = "";
-  for (int col = 0; col < referenceSeq.length(); ++col) {
-    if (referenceSeq[col] != '-') {
-      ungappedRef += referenceSeq[col];
-      refMap.push_back(col);
-    }
-  }
-  
-  int orfY[3] = { 40, 55, 70 };
+  // 6 Рамок Считывания (ORF +1, +2, +3, -1, -2, -3)
+  int orfY[6] = { 42, 55, 68, 81, 94, 107 };
   QFont orfFont("Monospace", 8, QFont::Bold);
   painter.setFont(orfFont);
   
-  for (int frame = 0; frame < 3; ++frame) {
+  for (int frame = 0; frame < 6; ++frame) {
     int yPos = orfY[frame];
-    for (int i = frame; i + 2 < ungappedRef.length(); i += 3) {
-      QString codon = ungappedRef.mid(i, 3);
-      QChar aa = translateCodon(codon, translationTable);
+    QString orfSeq = getOrfLine(frame);
+    for (int col = 0; col < orfSeq.length(); ++col) {
+      QChar aa = orfSeq[col];
       if (aa != ' ') {
-        int centerCol = refMap[i + 1];
-        int x = leftMarginWidth + centerCol * scaleX;
-        
+        int x = leftMarginWidth + col * scaleX;
         if (aa == 'M') painter.setPen(Qt::darkGreen);
         else if (aa == '*') painter.setPen(Qt::red);
+        else if (frame >= 3) painter.setPen(QColor(230, 81, 0)); // Обратные рамки подсвечиваем оранжевым
         else painter.setPen(Qt::darkBlue);
-        
         painter.drawText(x, yPos, QString(aa));
-        
-        int startX = leftMarginWidth + refMap[i] * scaleX;
-        int endX = leftMarginWidth + refMap[i+2] * scaleX + scaleX;
-        painter.setPen(QPen(Qt::lightGray, 1));
-        painter.drawLine(startX, yPos + 2, endX, yPos + 2);
       }
     }
   }
   
-  startY = 95;
+  drawSequenceCoordinates(120, consensusSeq, QColor(156, 39, 176));
+  
+  startY = 135;
   painter.setFont(seqFont);
   
   for (int i = 0; i < consensusSeq.length(); ++i) {
@@ -1386,15 +1240,15 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
       painter.setPen(Qt::red);
       QFont sepFont("SansSerif", 9, QFont::Bold); painter.setFont(sepFont);
       painter.drawText(scrollX + leftMarginWidth + 15, sepY + 4, 
-                       QString("⛔ Последовательности ниже не включены в контиг (Identity < %1%)").arg(minIdentityThreshold, 0, 'f', 1));
+                       QString("⛔ Не включены в контиг (Identity < %1%)").arg(minIdentityThreshold, 0, 'f', 1));
       currentY += 35;
     }
     
     auto &track = tracks[t];
     Ab1Data dispData = Ab1Parser::getOrientedData(track.originalData, track.alignment.isReverseComplement);
+    QString readAligned = track.alignment.alignedRead.isEmpty() ? dispData.sequence : track.alignment.alignedRead;
     
-    QString readAligned = track.alignment.alignedRead.isEmpty() ? 
-    dispData.sequence : track.alignment.alignedRead;
+    drawSequenceCoordinates(currentY + 5, readAligned, Qt::gray);
     
     struct BasePoint { double x; int col; };
     std::vector<BasePoint> basePoints;
@@ -1504,13 +1358,17 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
   
   painter.setFont(QFont("SansSerif", 7));
   painter.setPen(Qt::darkGray);
-  painter.drawText(scrollX + 10, 40, "ORF +1:");
+  painter.drawText(scrollX + 10, 42, "ORF +1:");
   painter.drawText(scrollX + 10, 55, "ORF +2:");
-  painter.drawText(scrollX + 10, 70, "ORF +3:");
+  painter.drawText(scrollX + 10, 68, "ORF +3:");
+  painter.setPen(QColor(230, 81, 0));
+  painter.drawText(scrollX + 10, 81, "ORF -1:");
+  painter.drawText(scrollX + 10, 94, "ORF -2:");
+  painter.drawText(scrollX + 10, 107, "ORF -3:");
   
   painter.setFont(seqFont);
   painter.setPen(QColor(156, 39, 176));
-  painter.drawText(scrollX + 10, 95, "CONSENSUS:");
+  painter.drawText(scrollX + 10, 135, "CONSENSUS:");
   
   QFont labelFont("SansSerif", 9);
   for (size_t t = 0; t < tracks.size(); ++t) {
@@ -1571,7 +1429,7 @@ void ContigWidget::dropEvent(QDropEvent *event) {
     
     if (isFileLoaded(filePath)) continue;
     
-    if (filePath.endsWith(".ab1", Qt::CaseInsensitive)) {
+    if (filePath.endsWith(".ab1", Qt::CaseInsensitive) || filePath.endsWith(".scf", Qt::CaseInsensitive)) {
       Ab1Data data = Ab1Parser::parse(filePath);
       if (data.isValid) addAb1Track(filePath, data);
     } else if (filePath.endsWith(".fasta", Qt::CaseInsensitive) || 
@@ -1803,7 +1661,6 @@ void ContigWidget::keyPressEvent(QKeyEvent *event) {
   }
 }
 
-// КОПИРОВАНИЕ В КЛИПБОРД С ПОДДЕРЖКОЙ REF, ORF1-3, CONSENSUS И ТРЕКОВ
 void ContigWidget::copySelectedToClipboard() {
   if (selTrack == SEL_NONE || selStartCol < 0 || selEndCol < 0) return;
   int minC = std::min(selStartCol, selEndCol), maxC = std::max(selStartCol, selEndCol);
@@ -1814,6 +1671,9 @@ void ContigWidget::copySelectedToClipboard() {
   else if (selTrack == SEL_ORF1) seq = getOrfLine(0).mid(minC, len);
   else if (selTrack == SEL_ORF2) seq = getOrfLine(1).mid(minC, len);
   else if (selTrack == SEL_ORF3) seq = getOrfLine(2).mid(minC, len);
+  else if (selTrack == SEL_ORF_REV1) seq = getOrfLine(3).mid(minC, len);
+  else if (selTrack == SEL_ORF_REV2) seq = getOrfLine(4).mid(minC, len);
+  else if (selTrack == SEL_ORF_REV3) seq = getOrfLine(5).mid(minC, len);
   else if (selTrack == SEL_CONSENSUS) seq = consensusSeq.mid(minC, len);
   else if (selTrack >= 0 && selTrack < (int)tracks.size()) {
     QString full = tracks[selTrack].alignment.alignedRead.isEmpty() ? 
@@ -1824,10 +1684,35 @@ void ContigWidget::copySelectedToClipboard() {
   if (!seq.isEmpty()) QGuiApplication::clipboard()->setText(seq);
 }
 
+// КОПИРОВАНИЕ ВЫДЕЛЕННОГО УЧАСТКА ХРОМАТОГРАММЫ В КЛИПБОРД КАК ИЗОБРАЖЕНИЕ (PNG)
+void ContigWidget::copySelectionAsImageToClipboard() {
+  if (selStartCol < 0 || selEndCol < 0) return;
+  
+  int minC = std::min(selStartCol, selEndCol);
+  int maxC = std::max(selStartCol, selEndCol);
+  int numCols = maxC - minC + 1;
+  
+  int imgWidth = numCols * scaleX + leftMarginWidth;
+  int imgHeight = getTrackY(tracks.size()) + 20;
+  
+  QImage image(imgWidth, imgHeight, QImage::Format_ARGB32);
+  image.fill(Qt::white);
+  
+  QPainter imgPainter(&image);
+  imgPainter.setRenderHint(QPainter::Antialiasing);
+  imgPainter.translate(-minC * scaleX, 0);
+  
+  render(&imgPainter);
+  QGuiApplication::clipboard()->setImage(image);
+}
+
 void ContigWidget::contextMenuEvent(QContextMenuEvent *event) {
   QMenu menu(this);
-  QAction *copyAct = menu.addAction("📋 Copy Selection (Ctrl+C)");
+  QAction *copyAct = menu.addAction("📋 Copy Sequence (Ctrl+C)");
   connect(copyAct, &QAction::triggered, this, &ContigWidget::copySelectedToClipboard);
+  
+  QAction *copyImgAct = menu.addAction("🖼 Copy Selection as Image");
+  connect(copyImgAct, &QAction::triggered, this, &ContigWidget::copySelectionAsImageToClipboard);
   
   int t = getTrackFromY(event->pos().y());
   if (t >= 0 && t < (int)tracks.size()) {
