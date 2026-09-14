@@ -11,6 +11,18 @@
 
 ---
 
+## 📥 Downloads & Quick Installation
+
+Pre-compiled standalone installers are available directly in the root of this repository:
+
+* **Windows**: Download [`ChromaZ_Setup.exe`](ChromaZ_Setup.exe) and run the setup wizard.
+* **Debian / Ubuntu**: Download [`chromaz_1.0-1_amd64.deb`](chromaz_1.0-1_amd64.deb) and install via terminal:
+  ```bash
+  sudo apt install ./chromaz_1.0-1_amd64.deb
+  ```
+
+---
+
 ## 🌟 Key Features
 
 ### 🧬 Contig Assembly & Alignment Algorithms
@@ -107,4 +119,9 @@ mkdir build && cd build
 cmake src/.. && make -j$(nproc)
 ./ChromaZ
 ```
+
+---
+
+## 📜 License
+This project is licensed under the MIT License. See the LICENSE file for details.
 
