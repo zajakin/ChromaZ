@@ -21,6 +21,12 @@ static const int SEL_ORF3 = -5;
 static const int SEL_ORF_REV1 = -6;
 static const int SEL_ORF_REV2 = -7;
 static const int SEL_ORF_REV3 = -8;
+static const int SEL_ORF_B1 = -9;
+static const int SEL_ORF_B2 = -10;
+static const int SEL_ORF_B3 = -11;
+static const int SEL_ORF_BREV1 = -12;
+static const int SEL_ORF_BREV2 = -13;
+static const int SEL_ORF_BREV3 = -14;
 
 struct AlignedTrack {
   QString filePath;
@@ -45,6 +51,8 @@ struct WidgetState {
   int selStartCol;
   int selEndCol;
   bool autoRCEnabled;
+  bool showOrfA;
+  bool showOrfB;
 };
 
 class ContigWidget : public QWidget {
@@ -62,6 +70,8 @@ public:
   QString getConsensusSequence() const { return consensusSeq; }
   bool isIupacConsensusEnabled() const { return useIupacConsensus; }
   bool isAutoRCEnabled() const { return autoRCEnabled; }
+  bool isOrfAEnabled() const { return showOrfA; }
+  bool isOrfBEnabled() const { return showOrfB; }
   AlignmentAlgorithm getAlignmentAlgorithm() const { return currentAlgorithm; }
   
   bool saveProject(const QString &filePath);
@@ -76,6 +86,8 @@ public:
   void redo();
   void runAlignment();
   void setAutoRC(bool enable);
+  void setShowOrfA(bool enable);
+  void setShowOrfB(bool enable);
   void setAlignmentAlgorithm(int algoIdx);
   void setTranslationTable(int tableIdx);
   void setConsensusIupac(bool enable);
@@ -115,8 +127,9 @@ private:
   int getMaxCols() const;
   int getNumInContig() const;
   int getTrackY(int trackIdx) const;
+  int calculateHeaderHeight() const;
   QChar translateCodon(const QString& codon, int tableIndex) const;
-  QString getOrfLine(int frame) const;
+  QString getOrfLine(int frame, const QString &targetSeq) const;
   void pushUndoState();
   
   QString referenceSeq;
@@ -137,6 +150,8 @@ private:
   AlignmentAlgorithm currentAlgorithm = AlignmentAlgorithm::OverlapCAP3;
   bool useIupacConsensus = false;
   bool autoRCEnabled = true;
+  bool showOrfA = true;
+  bool showOrfB = true;
   int translationTable = 0;
   double minIdentityThreshold = 45.0;
   int leftMarginWidth = 220;
@@ -148,7 +163,6 @@ private:
   double scaleX = 14.0;
   double scaleY = 0.05;
   int trackHeight = 120;
-  int trackStartY = 160;
   
   int selTrack = SEL_NONE;      
   int selStartCol = -1;   

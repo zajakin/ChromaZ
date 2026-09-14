@@ -1,11 +1,12 @@
   
-  # sudo apt install mingw-w64 mingw-w64-tools cmake make
+  # sudo apt install mingw-w64 mingw-w64-tools cmake make  imagemagick librsvg2-bin
   
-  cd /home/pawel/Desktop/ChromaZ
+  cd /home/pawel/Desktop/ChromaZ/
   rm -rf build
-  mkdir build
-  cd build
-  cmake .. && make && ctest --output-on-failure
+  mkdir build && cd build
+  rsvg-convert -f png -w 256 -h 256 ../src/app.svg -o app.png
+  convert app.png ../src/app.ico && rm app.png
+  cmake ../src && make && ctest --output-on-failure
 
 #   mkdir -p chromaz_1.0-1_amd64/DEBIAN
 #   mkdir -p chromaz_1.0-1_amd64/usr/bin
@@ -50,11 +51,11 @@
   cd /home/pawel/Desktop/ChromaZ
   rm -rf build-win
   mkdir -p build-win && cd build-win
-  cmake -DCMAKE_TOOLCHAIN_FILE=../toolchain-mingw64.cmake ..
+  cmake -DCMAKE_TOOLCHAIN_FILE=../src/toolchain-mingw64.cmake ../src
   make
   cp ChromaZ.exe ../win/
   cd ..
-  makensis installer.nsi
+  makensis src/installer.nsi
   
 #   cd .. && 7z a -t7z -m0=lzma2 -mx=9 build-win/archive.7z ChromaZ && cd build-win
 #   cat << 'EOF' > config.txt

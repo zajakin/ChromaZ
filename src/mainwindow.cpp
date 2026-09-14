@@ -28,6 +28,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     currentProjectPath = path;
     setWindowTitle(QString("ChromaZ - %1").arg(QFileInfo(path).fileName()));
     if (iupacAction) iupacAction->setChecked(contigView->isIupacConsensusEnabled());
+    if (orfAAction) orfAAction->setChecked(contigView->isOrfAEnabled());
+    if (orfBAction) orfBAction->setChecked(contigView->isOrfBEnabled());
     if (algoCombo) {
       algoCombo->blockSignals(true);
       algoCombo->setCurrentIndex(static_cast<int>(contigView->getAlignmentAlgorithm()));
@@ -51,7 +53,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   redoAct->setShortcut(QKeySequence::Redo);
   connect(redoAct, &QAction::triggered, contigView, &ContigWidget::redo);
   
-  QAction *copyAct = new QAction("📋 Copy Selection", this);
+  QAction *copyAct = new QAction("📋 Copy Sequence", this);
   copyAct->setShortcut(QKeySequence::Copy);
   connect(copyAct, &QAction::triggered, contigView, &ContigWidget::copySelectedToClipboard);
   
@@ -102,6 +104,16 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   iupacAction->setCheckable(true);
   iupacAction->setChecked(false);
   connect(iupacAction, &QAction::toggled, contigView, &ContigWidget::setConsensusIupac);
+  
+  orfAAction = new QAction("🧬 ORF A (Ref/Contig)", this);
+  orfAAction->setCheckable(true);
+  orfAAction->setChecked(true);
+  connect(orfAAction, &QAction::toggled, contigView, &ContigWidget::setShowOrfA);
+  
+  orfBAction = new QAction("🧬 ORF B (Consensus)", this);
+  orfBAction->setCheckable(true);
+  orfBAction->setChecked(true);
+  connect(orfBAction, &QAction::toggled, contigView, &ContigWidget::setShowOrfB);
   
   autoRCAct = new QAction("🔄 Auto RC", this);
   autoRCAct->setCheckable(true);
@@ -165,6 +177,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   editMenu->addAction(copyImgAct);
   
   QMenu *viewMenu = menuBar()->addMenu("View");
+  viewMenu->addAction(orfAAction);
+  viewMenu->addAction(orfBAction);
+  viewMenu->addSeparator();
   viewMenu->addAction(prevSnpAct);
   viewMenu->addAction(nextSnpAct);
   viewMenu->addSeparator();
@@ -180,6 +195,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   toolsMenu->addAction(alignAct);
   toolsMenu->addAction(autoRCAct);
   toolsMenu->addAction(iupacAction);
+  toolsMenu->addAction(orfAAction);
+  toolsMenu->addAction(orfBAction);
   toolsMenu->addAction(trimAct);
   
   QToolBar *fileToolBar = addToolBar("File");
@@ -231,6 +248,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   addToolBarBreak(Qt::TopToolBarArea);
   
   QToolBar *transToolBar = addToolBar("Translation & Consensus");
+  transToolBar->addAction(orfAAction);
+  transToolBar->addAction(orfBAction);
+  transToolBar->addSeparator();
   transToolBar->addAction(iupacAction);
   transToolBar->addSeparator();
   transToolBar->addWidget(new QLabel(" Translation: ", this));
@@ -294,6 +314,8 @@ void MainWindow::openProject() {
       setWindowTitle(QString("ChromaZ - %1").arg(QFileInfo(fileName).fileName()));
       contigView->fitToWindowHeight(scrollArea->viewport()->height());
       if (iupacAction) iupacAction->setChecked(contigView->isIupacConsensusEnabled());
+      if (orfAAction) orfAAction->setChecked(contigView->isOrfAEnabled());
+      if (orfBAction) orfBAction->setChecked(contigView->isOrfBEnabled());
       if (algoCombo) {
         algoCombo->blockSignals(true);
         algoCombo->setCurrentIndex(static_cast<int>(contigView->getAlignmentAlgorithm()));

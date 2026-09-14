@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Темный сплошной фон карточки -->
+  <rect x="8" y="8" width="240" height="240" rx="48" fill="#1a1d27" stroke="#3b4254" stroke-width="4"/>
+
+  <!-- Линии сетки -->
+  <line x1="28" y1="70" x2="228" y2="70" stroke="#333b4d" stroke-width="2" stroke-dasharray="6,6"/>
+  <line x1="28" y1="190" x2="228" y2="190" stroke="#4a5568" stroke-width="3"/>
+
+  <!-- Полупрозрачные заливки под пиками -->
+  <!-- A (Зеленый) -->
+  <path d="M 28,190 Q 55,190 68,90 Q 80,190 105,190 Z" fill="#4CAF50" fill-opacity="0.25"/>
+  <!-- C (Синий) -->
+  <path d="M 75,190 Q 100,190 112,70 Q 125,190 150,190 Z" fill="#2196F3" fill-opacity="0.25"/>
+  <!-- G (Желтый) -->
+  <path d="M 115,190 Q 135,190 148,110 Q 160,190 185,190 Z" fill="#FFC107" fill-opacity="0.25"/>
+  <!-- T (Красный) -->
+  <path d="M 155,190 Q 175,190 188,85 Q 200,190 225,190 Z" fill="#F44336" fill-opacity="0.25"/>
+
+  <!-- Яркие толстые линии хроматограмм (8px) -->
+  <!-- A - Green -->
+  <path d="M 28,190 Q 55,190 68,90 Q 80,190 105,190" fill="none" stroke="#4CAF50" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- C - Blue -->
+  <path d="M 75,190 Q 100,190 112,70 Q 125,190 150,190" fill="none" stroke="#2196F3" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- G - Yellow -->
+  <path d="M 115,190 Q 135,190 148,110 Q 160,190 185,190" fill="none" stroke="#FFC107" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- T - Red -->
+  <path d="M 155,190 Q 175,190 188,85 Q 200,190 225,190" fill="none" stroke="#F44336" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Белые маркеры на вершинах пиков -->
+  <circle cx="68" cy="90" r="4" fill="#FFFFFF"/>
+  <circle cx="112" cy="70" r="4" fill="#FFFFFF"/>
+  <circle cx="148" cy="110" r="4" fill="#FFFFFF"/>
+  <circle cx="188" cy="85" r="4" fill="#FFFFFF"/>
+
+  <!-- Буквы нуклеотидов -->
+  <text x="68" y="52" font-family="Arial, sans-serif" font-weight="bold" font-size="24" fill="#4CAF50" text-anchor="middle">A</text>
+  <text x="112" y="52" font-family="Arial, sans-serif" font-weight="bold" font-size="24" fill="#2196F3" text-anchor="middle">C</text>
+  <text x="148" y="52" font-family="Arial, sans-serif" font-weight="bold" font-size="24" fill="#FFC107" text-anchor="middle">G</text>
+  <text x="188" y="52" font-family="Arial, sans-serif" font-weight="bold" font-size="24" fill="#F44336" text-anchor="middle">T</text>
+
+  <!-- Фиолетовый плашка бренда ChromaZ -->
+  <rect x="182" y="16" width="44" height="30" rx="8" fill="#9C27B0"/>
+  <text x="204" y="38" font-family="Arial, sans-serif" font-weight="bold" font-size="20" fill="#FFFFFF" text-anchor="middle">Z</text>
+</svg>

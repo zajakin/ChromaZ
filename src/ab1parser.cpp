@@ -74,12 +74,11 @@ Ab1Data Ab1Parser::getOrientedData(const Ab1Data &orig, bool isRC) {
   return res;
 }
 
-// Парсинг хроматограмм формата Staden SCF (v2 / v3)
 Ab1Data Ab1Parser::parseScf(const QString &filePath) {
   Ab1Data data;
   QFile file(filePath);
   if (!file.open(QIODevice::ReadOnly)) {
-    data.errorMessage = "Не удалось открыть SCF файл";
+    data.errorMessage = "Failed to open SCF file";
     return data;
   }
   
@@ -94,7 +93,7 @@ Ab1Data Ab1Parser::parseScf(const QString &filePath) {
      in >> hdr.sample_size;
      
      if (hdr.magic != 0x2e736366) { // ".scf"
-       data.errorMessage = "Невалидный формат SCF";
+       data.errorMessage = "Invalid SCF format";
        return data;
      }
      
@@ -141,7 +140,7 @@ Ab1Data Ab1Parser::parse(const QString &filePath) {
   Ab1Data data;
   QFile file(filePath);
   if (!file.open(QIODevice::ReadOnly)) {
-    data.errorMessage = "Не удалось открыть файл";
+    data.errorMessage = "Failed to open file";
     return data;
   }
   
