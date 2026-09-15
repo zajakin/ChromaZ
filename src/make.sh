@@ -1,5 +1,5 @@
   
-  # sudo apt install mingw-w64 mingw-w64-tools cmake make  imagemagick librsvg2-bin
+  sudo apt install mingw-w64 mingw-w64-tools cmake make  imagemagick librsvg2-bin
   
   cd /home/pawel/Desktop/ChromaZ/
   rm -rf build
@@ -47,10 +47,10 @@ EOF
   mv "$PKG_DIR.deb" ../
 
   #### Windows  ####
-  # mkdir -p ~/mingw-qt6 && cd ~/mingw-qt6
-  # wget https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-qt6-base-6.11.2-2-any.pkg.tar.zst
-  # tar -I zstd -xvf mingw-w64-x86_64-qt6-base-*.pkg.tar.zst
-  # rm mingw-w64-x86_64-qt6-base-*.pkg.tar.zst
+  mkdir -p ~/mingw-qt6 && cd ~/mingw-qt6
+  wget https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-qt6-base-6.11.2-2-any.pkg.tar.zst
+  tar -I zstd -xvf mingw-w64-x86_64-qt6-base-*.pkg.tar.zst
+  rm mingw-w64-x86_64-qt6-base-*.pkg.tar.zst
 
   cd /home/pawel/Desktop/ChromaZ
   rm -rf build-win
@@ -61,16 +61,5 @@ EOF
   cd ..
   makensis src/installer.nsi
   
-#   cd .. && 7z a -t7z -m0=lzma2 -mx=9 build-win/archive.7z ChromaZ && cd build-win
-#   cat << 'EOF' > config.txt
-# ;!@Install@!UTF-8!
-# Title="Установка ChromaZ"
-# BeginPrompt="Распаковать и запустить ChromaZ?"
-# RunProgram="ChromaZ\ChromaZ.exe"
-# ;!@InstallEnd@!
-# EOF
-#   wget https://github.com/ip7z/7zip/releases/download/26.03/lzma2603.7z
-#   7z e lzma2603.7z bin/7zS2.sfx bin/7zSD.sfx
-#   cat 7zS2.sfx config.txt archive.7z > ../ChromaZ.exe
-  
+  git tag v${VER} && git push origin v${VER}
   
