@@ -10,11 +10,10 @@
 
 Готовые установочные файлы доступны прямо в корне репозитория:
 
-* **Windows**: Скачайте [`ChromaZ_Setup.exe`](ChromaZ_Setup.exe) и запустите мастер установки.
-* **Debian / Ubuntu**: Скачайте [`chromaz_1.0-1_amd64.deb`](chromaz_1.0-1_amd64.deb) и установите через терминал:
-  ```bash
-  sudo apt install ./chromaz_1.0-1_amd64.deb
-  ```
+* **Debian / Ubuntu**: [Скачайте ChromaZ_Linux_Install_VERSION_amd64.deb](https://github.com/zajakin/ChromaZ/releases/latest/).
+* **Windows**: [Скачайте ChromaZ_Windows_Install_VERSION.exe](https://github.com/zajakin/ChromaZ/releases/latest/).
+* **macOS**: [Скачайте ChromaZ_macOS_Install_VERSION.dmg](https://github.com/zajakin/ChromaZ/releases/latest/)
+
 ------------------------------------------------------------------------
   
 ## 🌟 Основные возможности

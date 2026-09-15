@@ -47,7 +47,7 @@ jobs:
         cmake -B build-linux -S src -DCMAKE_BUILD_TYPE=Release -DAPP_VERSION="$VER"
         cmake --build build-linux -j$(nproc)
 
-        PKG_DIR="chromaz_${VER}_amd64"
+        PKG_DIR="ChromaZ_Linux_Install_${VER}_amd64"
         mkdir -p "$PKG_DIR/DEBIAN" "$PKG_DIR/usr/bin" "$PKG_DIR/usr/share/applications" "$PKG_DIR/usr/share/pixmaps"
 
         cat << CONTROL_EOF | sed 's/^        //' > "$PKG_DIR/DEBIAN/control"
@@ -91,14 +91,14 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ChromaZ-Linux-Installer
-        path: chromaz_${{ env.APP_VERSION }}_amd64.deb
+        path: ChromaZ_Linux_Install_${{ env.APP_VERSION }}_amd64.deb
         retention-days: 30
 
     - name: "Upload Linux to GitHub Release (on Tag)"
       uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: chromaz_${{ env.APP_VERSION }}_amd64.deb
+        files: ChromaZ_Linux_Install_${{ env.APP_VERSION }}_amd64.deb
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -131,8 +131,10 @@ jobs:
         target: 'desktop'
         arch: 'win64_msvc2019_64'
 
-    - name: Install NSIS
-      run: choco install nsis -y
+    - name: Install NSIS & Add to Path
+      run: |
+        choco install nsis -y
+        echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
 
     - name: Configure CMake
       run: |
@@ -149,19 +151,20 @@ jobs:
         cp build/Release/ChromaZ.exe win/
         windeployqt win/ChromaZ.exe
         makensis src/installer.nsi
+        find . -maxdepth 2 -name "*.exe" ! -name "ChromaZ.exe" -exec mv {} ChromaZ_Windows_Install_${{ env.APP_VERSION }}.exe \;
 
     - name: Upload Windows Artifact
       uses: actions/upload-artifact@v4
       with:
         name: ChromaZ-Windows-Installer
-        path: ChromaZ_Setup.exe
+        path: ChromaZ_Windows_Install_${{ env.APP_VERSION }}.exe
         retention-days: 30
 
     - name: "Upload Windows to GitHub Release (on Tag)"
       uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: ChromaZ_Setup.exe
+        files: ChromaZ_Windows_Install_${{ env.APP_VERSION }}.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -209,19 +212,19 @@ jobs:
         APP_PATH=$(find build -name "ChromaZ.app" -type d | head -n 1)
         echo "Found bundle at: $APP_PATH"
         $QT_ROOT_DIR/bin/macdeployqt "$APP_PATH" -dmg
-        find build -name "*.dmg" -exec mv {} ChromaZ_macOS.dmg \;
+        find build -name "*.dmg" -exec mv {} ChromaZ_macOS_Install_${{ env.APP_VERSION }}.dmg \;
 
     - name: Upload macOS Artifact
       uses: actions/upload-artifact@v4
       with:
         name: ChromaZ-macOS-Installer
-        path: ChromaZ_macOS.dmg
+        path: ChromaZ_macOS_Install_${{ env.APP_VERSION }}.dmg
         retention-days: 30
 
     - name: "Upload macOS to GitHub Release (on Tag)"
       uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: ChromaZ_macOS.dmg
+        files: ChromaZ_macOS_Install_${{ env.APP_VERSION }}.dmg
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

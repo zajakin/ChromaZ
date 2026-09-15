@@ -15,11 +15,9 @@
 
 Pre-compiled standalone installers are available directly in the root of this repository:
 
-* **Windows**: Download [`ChromaZ_Setup.exe`](ChromaZ_Setup.exe) and run the setup wizard.
-* **Debian / Ubuntu**: Download [`chromaz_1.0-1_amd64.deb`](chromaz_1.0-1_amd64.deb) and install via terminal:
-  ```bash
-  sudo apt install ./chromaz_1.0-1_amd64.deb
-  ```
+* **Debian / Ubuntu**: [Download ChromaZ_Linux_Install_VERSION_amd64.deb](https://github.com/zajakin/ChromaZ/releases/latest/).
+* **Windows**: [Download ChromaZ_Windows_Install_VERSION.exe](https://github.com/zajakin/ChromaZ/releases/latest/).
+* **macOS**: [Download ChromaZ_macOS_Install_VERSION.dmg](https://github.com/zajakin/ChromaZ/releases/latest/)
 
 ---
 
