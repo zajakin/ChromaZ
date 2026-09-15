@@ -1,5 +1,7 @@
   VER="1.0.0"
-  # git tag v${VER} && git push origin v${VER}  
+  # git tag v${VER} && git push origin v${VER}
+  # git tag -d v${VER} && git push origin --delete v${VER}
+
   sudo apt install mingw-w64 mingw-w64-tools cmake make  imagemagick librsvg2-bin
   
   cd /home/pawel/Desktop/ChromaZ/
