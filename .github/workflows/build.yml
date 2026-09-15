@@ -33,7 +33,7 @@ jobs:
     - name: Install Build Dependencies (MinGW & NSIS)
       run: |
         sudo apt-get update
-        sudo apt-get install -y nsis mingw-w64 mingw-w64-tools zstd
+        sudo apt-get install -y build-essential cmake make nsis mingw-w64 mingw-w64-tools zstd
 
     # --- СБОРКА LINUX DEBIAN PACKAGE (.deb) ---
     - name: Create Linux Build Script
@@ -57,28 +57,28 @@ jobs:
         mkdir -p "$PKG_DIR/DEBIAN" "$PKG_DIR/usr/bin" "$PKG_DIR/usr/share/applications" "$PKG_DIR/usr/share/pixmaps"
 
         cat << CONTROL_EOF > "$PKG_DIR/DEBIAN/control"
-        Package: chromaz
-        Version: ${VER}
-        Section: science
-        Priority: optional
-        Architecture: amd64
-        Depends: libqt6widgets6 (>= 6.0.0), libqt6gui6 (>= 6.0.0), libqt6core6 (>= 6.0.0), libc6 (>= 2.27)
-        Maintainer: Pawel Zayakin <pz@magisters.net>
-        Description: Sanger Chromatogram Alignment and Contig Viewer
-         ChromaZ allows viewing Sanger AB1 chromatograms, sequence alignment,
-         and contig visualization with interactive editing.
-        CONTROL_EOF
+Package: chromaz
+Version: ${VER}
+Section: science
+Priority: optional
+Architecture: amd64
+Depends: libqt6widgets6 (>= 6.0.0), libqt6gui6 (>= 6.0.0), libqt6core6 (>= 6.0.0), libc6 (>= 2.27)
+Maintainer: Pawel Zayakin <pz@magisters.net>
+Description: Sanger Chromatogram Alignment and Contig Viewer
+ ChromaZ allows viewing Sanger AB1 chromatograms, sequence alignment,
+ and contig visualization with interactive editing.
+CONTROL_EOF
 
         cat << 'DESKTOP_EOF' > "$PKG_DIR/usr/share/applications/chromaz.desktop"
-        [Desktop Entry]
-        Name=ChromaZ
-        Comment=Sanger Chromatogram Alignment Viewer
-        Exec=/usr/bin/ChromaZ
-        Icon=chromaz
-        Terminal=false
-        Type=Application
-        Categories=Science;Biology;
-        DESKTOP_EOF
+[Desktop Entry]
+Name=ChromaZ
+Comment=Sanger Chromatogram Alignment Viewer
+Exec=/usr/bin/ChromaZ
+Icon=chromaz
+Terminal=false
+Type=Application
+Categories=Science;Biology;
+DESKTOP_EOF
 
         cp build-linux/ChromaZ "$PKG_DIR/usr/bin/"
         cp chromaz.png "$PKG_DIR/usr/share/pixmaps/"
@@ -104,7 +104,7 @@ jobs:
         mkdir -p win
 
         cmake -B build-win -S src \
-          -DCMAKE_TOOLCHAIN_FILE=src/toolchain-mingw64.cmake \
+          -DCMAKE_TOOLCHAIN_FILE="${GITHUB_WORKSPACE}/src/toolchain-mingw64.cmake" \
           -DCMAKE_BUILD_TYPE=Release \
           -DAPP_VERSION="${{ env.APP_VERSION }}"
         cmake --build build-win -j$(nproc)
