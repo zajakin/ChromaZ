@@ -13,6 +13,7 @@
 #include <QPushButton>
 #include <QAction>
 #include <QKeySequence>
+#include <QFileInfo>
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   setWindowTitle("ChromaZ - Contig Alignment Viewer");
@@ -157,6 +158,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   QAction *zoomResetAct = new QAction("Reset Zoom", this);
   connect(zoomResetAct, &QAction::triggered, contigView, &ContigWidget::resetZoom);
   
+  QAction *aboutAct = new QAction("ℹ About ChromaZ...", this);
+  aboutAct->setShortcut(QKeySequence::HelpContents);
+  connect(aboutAct, &QAction::triggered, this, &MainWindow::showAboutDialog);
+  
   QMenu *fileMenu = menuBar()->addMenu("File");
   fileMenu->addAction(openProjAct);
   fileMenu->addAction(saveProjAct);
@@ -198,6 +203,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   toolsMenu->addAction(orfAAction);
   toolsMenu->addAction(orfBAction);
   toolsMenu->addAction(trimAct);
+  
+  QMenu *helpMenu = menuBar()->addMenu("Help");
+  helpMenu->addAction(aboutAct);
   
   QToolBar *fileToolBar = addToolBar("File");
   QAction *tbOpen = fileToolBar->addAction("📁 Open");
@@ -384,4 +392,19 @@ void MainWindow::openFastaFile() {
     contigView->setReference(records[0].data.sequence);
     contigView->fitToWindowHeight(scrollArea->viewport()->height());
   }
+}
+
+void MainWindow::showAboutDialog() {
+  QString title = tr("About ChromaZ");
+  QString text = tr(
+    "<h2>ChromaZ v%1</h2>"
+    "<p><b>Sanger Chromatogram Alignment & Contig Editor</b></p>"
+    "<hr>"
+    "<p><b>Author:</b> Pawel Zayakin</p>"
+    "<p><b>GitHub:</b> <a href=\"https://github.com/zajakin/ChromaZ\">github.com/zajakin/ChromaZ</a></p>"
+  "<br>"
+  "<p>Distributed under the MIT License.</p>"
+  ).arg(CHROMAZ_VERSION);
+  
+  QMessageBox::about(this, title, text);
 }

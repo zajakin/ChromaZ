@@ -9,7 +9,7 @@
   cmake ../src && make && ctest --output-on-failure
   
   set -e
-  VER="1.0-1"
+  VER="1.0.0"
   PKG_DIR="chromaz_${VER}_amd64"
   rm -rf "$PKG_DIR"
   mkdir -p "$PKG_DIR/DEBIAN"

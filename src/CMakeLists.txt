@@ -1,11 +1,20 @@
 cmake_minimum_required(VERSION 3.16)
-project(ChromaZ LANGUAGES CXX)
+
+# Если версия передана снаружи (из CI/CD), используем её, иначе дефолт 1.0.0
+if(NOT DEFINED APP_VERSION OR APP_VERSION STREQUAL "")
+    set(APP_VERSION "1.0.0")
+endif()
+
+project(ChromaZ VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
+
+# Прокидываем версию внутрь C++ кода как глобальный макрос CHROMAZ_VERSION
+add_compile_definitions(CHROMAZ_VERSION="${APP_VERSION}")
 
 # Блокировка подтягивания Linux-заголовков Vulkan при кросс-компиляции
 if(CMAKE_CROSSCOMPILING)
@@ -58,8 +67,8 @@ if(APPLE)
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_BUNDLE_NAME "ChromaZ"
         MACOSX_BUNDLE_GUI_IDENTIFIER "net.magisters.chromaz"
-        MACOSX_BUNDLE_BUNDLE_VERSION "1.0.0"
-        MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${APP_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${APP_VERSION}"
     )
 endif()
 

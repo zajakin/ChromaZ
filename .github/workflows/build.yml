@@ -20,6 +20,16 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Determine Version
+      run: |
+        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          VER="${GITHUB_REF_NAME#v}"
+        else
+          VER="1.0-1"
+        fi
+        echo "APP_VERSION=${VER}" >> $GITHUB_ENV
+        echo "Building version: ${VER}"
+
     - name: Install Build Dependencies (MinGW & NSIS)
       run: |
         sudo apt-get update
@@ -37,10 +47,10 @@ jobs:
           rsvg-convert -f png -w 256 -h 256 src/app.svg -o chromaz.png
           convert chromaz.png src/app.ico
 
-          cmake -B build-linux -S src -DCMAKE_BUILD_TYPE=Release
+          cmake -B build-linux -S src -DCMAKE_BUILD_TYPE=Release -DAPP_VERSION=\"${{ env.APP_VERSION }}\"
           cmake --build build-linux -j\$(nproc)
 
-          VER=\"1.0-1\"
+          VER=\"${{ env.APP_VERSION }}\"
           PKG_DIR=\"chromaz_\${VER}_amd64\"
           mkdir -p \"\$PKG_DIR/DEBIAN\" \"\$PKG_DIR/usr/bin\" \"\$PKG_DIR/usr/share/applications\" \"\$PKG_DIR/usr/share/pixmaps\"
 
@@ -88,7 +98,8 @@ EOF
 
         cmake -B build-win -S src \
           -DCMAKE_TOOLCHAIN_FILE=src/toolchain-mingw64.cmake \
-          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_BUILD_TYPE=Release \
+          -DAPP_VERSION="${{ env.APP_VERSION }}"
         cmake --build build-win -j$(nproc)
 
         cp build-win/ChromaZ.exe win/
@@ -100,7 +111,7 @@ EOF
       with:
         name: ChromaZ-Linux-Windows-Installers
         path: |
-          chromaz_1.0-1_amd64.deb
+          chromaz_${{ env.APP_VERSION }}_amd64.deb
           ChromaZ_Setup.exe
         retention-days: 30
 
@@ -109,7 +120,7 @@ EOF
       if: startsWith(github.ref, 'refs/tags/')
       with:
         files: |
-          chromaz_1.0-1_amd64.deb
+          chromaz_${{ env.APP_VERSION }}_amd64.deb
           ChromaZ_Setup.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -124,6 +135,15 @@ EOF
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Determine Version
+      run: |
+        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          VER="${GITHUB_REF_NAME#v}"
+        else
+          VER="1.0-1"
+        fi
+        echo "APP_VERSION=${VER}" >> $GITHUB_ENV
+
     - name: Install Qt6
       uses: jurplel/install-qt-action@v4
       with:
@@ -137,7 +157,8 @@ EOF
         cmake -B build -S src \
           -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
-          -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
+          -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
+          -DAPP_VERSION="${{ env.APP_VERSION }}"
 
     - name: Build ChromaZ
       run: |
@@ -164,4 +185,3 @@ EOF
         files: ChromaZ_macOS.dmg
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        
