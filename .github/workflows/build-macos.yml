@@ -25,10 +25,11 @@ jobs:
         target: 'desktop'
         arch: 'clang_64'
 
-    - name: Configure CMake
+    - name: Configure CMake (Universal Binary: Intel + Apple Silicon)
       run: |
         cmake -B build -S src \
           -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
           -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
 
     - name: Build ChromaZ
