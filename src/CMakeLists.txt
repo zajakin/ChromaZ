@@ -53,6 +53,16 @@ add_executable(ChromaZ WIN32
     alignmentengine.h
 )
 
+if(APPLE)
+    set_target_properties(ChromaZ PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_BUNDLE_NAME "ChromaZ"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "net.magisters.chromaz"
+        MACOSX_BUNDLE_BUNDLE_VERSION "1.0.0"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0"
+    )
+endif()
+
 target_link_libraries(ChromaZ PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
 
 # --- Блок авто-тестов ---

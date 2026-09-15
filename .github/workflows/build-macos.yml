@@ -1,0 +1,59 @@
+name: Build macOS Application
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-14
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install Qt6
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: '6.7.2'
+        host: 'mac'
+        target: 'desktop'
+        arch: 'clang_64'
+
+    - name: Configure CMake
+      run: |
+        cmake -B build -S src \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
+
+    - name: Build ChromaZ
+      run: |
+        cmake --build build --config Release -j$(sysctl -n hw.ncpu)
+
+    - name: Bundle Qt Frameworks & Create DMG
+      run: |
+        APP_PATH=$(find build -name "ChromaZ.app" -type d | head -n 1)
+        echo "Found bundle at: $APP_PATH"
+        $QT_ROOT_DIR/bin/macdeployqt "$APP_PATH" -dmg
+        find build -name "*.dmg" -exec mv {} ChromaZ_macOS.dmg \;
+
+    - name: Upload macOS DMG Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ChromaZ-macOS-Installer
+        path: ChromaZ_macOS.dmg
+        retention-days: 30
+
+    - name: Upload to GitHub Release (on Tag)
+      uses: softprops/action-gh-release@v2
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: ChromaZ_macOS.dmg
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
