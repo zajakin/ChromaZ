@@ -69,6 +69,7 @@ vcpkg_installed/
 Testing/
 .cache/
 .Rproj.user
+*.Rproj
 .Rhistory
 data/
 f2p_*
