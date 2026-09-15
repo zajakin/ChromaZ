@@ -30,10 +30,10 @@ jobs:
         echo "APP_VERSION=${VER}" >> $GITHUB_ENV
         echo "Building version: ${VER}"
 
-    - name: Install Build Dependencies (MinGW, Native Qt Tools & NSIS)
+    - name: Install Build Dependencies (MinGW, Wine & NSIS)
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential cmake make nsis mingw-w64 mingw-w64-tools zstd qt6-base-dev-tools
+        sudo apt-get install -y build-essential cmake make nsis mingw-w64 mingw-w64-tools zstd wine wine64
 
     # --- СБОРКА LINUX DEBIAN PACKAGE (.deb) ---
     - name: Create Linux Build Script
@@ -101,11 +101,22 @@ jobs:
         tar -I zstd -xvf mingw-w64-x86_64-qt6-base-*.pkg.tar.zst
         cd "$GITHUB_WORKSPACE"
 
+        # Создание обертки Wine для запуск нативного moc.exe версии 6.11
+        cat << 'EOF' > moc_wrapper.sh
+        #!/bin/bash
+        export WINEPATH="$HOME/mingw-qt6/mingw64/bin"
+        export WINEDEBUG=-all
+        wine "$HOME/mingw-qt6/mingw64/share/qt6/bin/moc.exe" "$@"
+        EOF
+        chmod +x moc_wrapper.sh
+
         mkdir -p win
 
         cmake -B build-win -S src \
           -DCMAKE_TOOLCHAIN_FILE="${GITHUB_WORKSPACE}/src/toolchain-mingw64.cmake" \
           -DCMAKE_BUILD_TYPE=Release \
+          -DNATIVE_MOC="${GITHUB_WORKSPACE}/moc_wrapper.sh" \
+          -DCMAKE_AUTOMOC_EXECUTABLE="${GITHUB_WORKSPACE}/moc_wrapper.sh" \
           -DAPP_VERSION="${{ env.APP_VERSION }}"
         cmake --build build-win -j$(nproc)
 
