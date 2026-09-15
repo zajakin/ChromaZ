@@ -1,4 +1,5 @@
-  
+  VER="1.0.0"
+  # git tag v${VER} && git push origin v${VER}  
   sudo apt install mingw-w64 mingw-w64-tools cmake make  imagemagick librsvg2-bin
   
   cd /home/pawel/Desktop/ChromaZ/
@@ -9,7 +10,6 @@
   cmake ../src && make && ctest --output-on-failure
   
   set -e
-  VER="1.0.0"
   PKG_DIR="chromaz_${VER}_amd64"
   rm -rf "$PKG_DIR"
   mkdir -p "$PKG_DIR/DEBIAN"

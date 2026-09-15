@@ -30,10 +30,10 @@ jobs:
         echo "APP_VERSION=${VER}" >> $GITHUB_ENV
         echo "Building version: ${VER}"
 
-    - name: Install Build Dependencies (MinGW & NSIS)
+    - name: Install Build Dependencies (MinGW, Native Qt Tools & NSIS)
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential cmake make nsis mingw-w64 mingw-w64-tools zstd
+        sudo apt-get install -y build-essential cmake make nsis mingw-w64 mingw-w64-tools zstd qt6-base-dev-tools
 
     # --- СБОРКА LINUX DEBIAN PACKAGE (.deb) ---
     - name: Create Linux Build Script
@@ -56,7 +56,7 @@ jobs:
         PKG_DIR="chromaz_${VER}_amd64"
         mkdir -p "$PKG_DIR/DEBIAN" "$PKG_DIR/usr/bin" "$PKG_DIR/usr/share/applications" "$PKG_DIR/usr/share/pixmaps"
 
-        cat << CONTROL_EOF > "$PKG_DIR/DEBIAN/control"
+        cat << CONTROL_EOF | sed 's/^        //' > "$PKG_DIR/DEBIAN/control"
         Package: chromaz
         Version: ${VER}
         Section: science
@@ -69,7 +69,7 @@ jobs:
          and contig visualization with interactive editing.
         CONTROL_EOF
 
-        cat << 'DESKTOP_EOF' > "$PKG_DIR/usr/share/applications/chromaz.desktop"
+        cat << 'DESKTOP_EOF' | sed 's/^        //' > "$PKG_DIR/usr/share/applications/chromaz.desktop"
         [Desktop Entry]
         Name=ChromaZ
         Comment=Sanger Chromatogram Alignment Viewer
