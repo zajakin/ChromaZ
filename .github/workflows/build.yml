@@ -35,56 +35,63 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y nsis mingw-w64 mingw-w64-tools zstd
 
-    # --- СБОРКА LINUX DEBIAN PACKAGE (.deb в Docker Debian 12 Bookworm) ---
-    - name: Build Linux Binary & DEB Package in Debian 12 Container
+    # --- СБОРКА LINUX DEBIAN PACKAGE (.deb) ---
+    - name: Create Linux Build Script
       run: |
-        docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace debian:bookworm bash -c "
-          set -e
-          apt-get update
-          apt-get install -y qt6-base-dev qt6-base-dev-tools libqt6widgets6 libqt6gui6 libqt6core6 \
-                             cmake make build-essential librsvg2-bin imagemagick
+        cat << 'EOF' > build_deb.sh
+        #!/bin/bash
+        set -e
+        VER="$1"
 
-          rsvg-convert -f png -w 256 -h 256 src/app.svg -o chromaz.png
-          convert chromaz.png src/app.ico
+        apt-get update
+        apt-get install -y qt6-base-dev qt6-base-dev-tools libqt6widgets6 libqt6gui6 libqt6core6 \
+                           cmake make build-essential librsvg2-bin imagemagick
 
-          cmake -B build-linux -S src -DCMAKE_BUILD_TYPE=Release -DAPP_VERSION=\"${{ env.APP_VERSION }}\"
-          cmake --build build-linux -j\$(nproc)
+        rsvg-convert -f png -w 256 -h 256 src/app.svg -o chromaz.png
+        convert chromaz.png src/app.ico
 
-          VER=\"${{ env.APP_VERSION }}\"
-          PKG_DIR=\"chromaz_\${VER}_amd64\"
-          mkdir -p \"\$PKG_DIR/DEBIAN\" \"\$PKG_DIR/usr/bin\" \"\$PKG_DIR/usr/share/applications\" \"\$PKG_DIR/usr/share/pixmaps\"
+        cmake -B build-linux -S src -DCMAKE_BUILD_TYPE=Release -DAPP_VERSION="$VER"
+        cmake --build build-linux -j$(nproc)
 
-          cat << EOF > \"\$PKG_DIR/DEBIAN/control\"
-Package: chromaz
-Version: \${VER}
-Section: science
-Priority: optional
-Architecture: amd64
-Depends: libqt6widgets6 (>= 6.0.0), libqt6gui6 (>= 6.0.0), libqt6core6 (>= 6.0.0), libc6 (>= 2.27)
-Maintainer: Pawel Zayakin <pz@magisters.net>
-Description: Sanger Chromatogram Alignment and Contig Viewer
- ChromaZ allows viewing Sanger AB1 chromatograms, sequence alignment,
- and contig visualization with interactive editing.
-EOF
+        PKG_DIR="chromaz_${VER}_amd64"
+        mkdir -p "$PKG_DIR/DEBIAN" "$PKG_DIR/usr/bin" "$PKG_DIR/usr/share/applications" "$PKG_DIR/usr/share/pixmaps"
 
-          cat << 'EOF' > \"\$PKG_DIR/usr/share/applications/chromaz.desktop\"
-[Desktop Entry]
-Name=ChromaZ
-Comment=Sanger Chromatogram Alignment Viewer
-Exec=/usr/bin/ChromaZ
-Icon=chromaz
-Terminal=false
-Type=Application
-Categories=Science;Biology;
-EOF
+        cat << CONTROL_EOF > "$PKG_DIR/DEBIAN/control"
+        Package: chromaz
+        Version: ${VER}
+        Section: science
+        Priority: optional
+        Architecture: amd64
+        Depends: libqt6widgets6 (>= 6.0.0), libqt6gui6 (>= 6.0.0), libqt6core6 (>= 6.0.0), libc6 (>= 2.27)
+        Maintainer: Pawel Zayakin <pz@magisters.net>
+        Description: Sanger Chromatogram Alignment and Contig Viewer
+         ChromaZ allows viewing Sanger AB1 chromatograms, sequence alignment,
+         and contig visualization with interactive editing.
+        CONTROL_EOF
 
-          cp build-linux/ChromaZ \"\$PKG_DIR/usr/bin/\"
-          cp chromaz.png \"\$PKG_DIR/usr/share/pixmaps/\"
-          find \"\$PKG_DIR\" -type d -exec chmod 755 {} +
-          find \"\$PKG_DIR\" -type f -exec chmod 644 {} +
-          chmod +x \"\$PKG_DIR/usr/bin/ChromaZ\"
-          dpkg-deb --root-owner-group --build \"\$PKG_DIR\"
-        "
+        cat << 'DESKTOP_EOF' > "$PKG_DIR/usr/share/applications/chromaz.desktop"
+        [Desktop Entry]
+        Name=ChromaZ
+        Comment=Sanger Chromatogram Alignment Viewer
+        Exec=/usr/bin/ChromaZ
+        Icon=chromaz
+        Terminal=false
+        Type=Application
+        Categories=Science;Biology;
+        DESKTOP_EOF
+
+        cp build-linux/ChromaZ "$PKG_DIR/usr/bin/"
+        cp chromaz.png "$PKG_DIR/usr/share/pixmaps/"
+        find "$PKG_DIR" -type d -exec chmod 755 {} +
+        find "$PKG_DIR" -type f -exec chmod 644 {} +
+        chmod +x "$PKG_DIR/usr/bin/ChromaZ"
+        dpkg-deb --root-owner-group --build "$PKG_DIR"
+        EOF
+        chmod +x build_deb.sh
+
+    - name: Run Linux Build inside Debian 12 Container
+      run: |
+        docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace debian:bookworm ./build_deb.sh "${{ env.APP_VERSION }}"
 
     # --- СБОРКА WINDOWS INSTALLER (.exe) ---
     - name: Download MinGW Qt6 Toolchain & Build Windows Installer
