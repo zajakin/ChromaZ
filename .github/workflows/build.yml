@@ -101,9 +101,17 @@ jobs:
         tar -I zstd -xvf mingw-w64-x86_64-qt6-base-*.pkg.tar.zst
         cd "$GITHUB_WORKSPACE"
 
-        # Создание обертки Wine для запуск нативного moc.exe версии 6.11
+        # Предварительная однопоточная инициализация Wine
+        export WINEARCH=win64
+        export WINEPREFIX="$HOME/.wine"
+        export WINEDEBUG=-all
+        wineboot -u
+
+        # Создание обертки Wine для запуска нативного moc.exe версии 6.11
         cat << 'EOF' > moc_wrapper.sh
         #!/bin/bash
+        export WINEARCH=win64
+        export WINEPREFIX="$HOME/.wine"
         export WINEPATH="$HOME/mingw-qt6/mingw64/bin"
         export WINEDEBUG=-all
         wine "$HOME/mingw-qt6/mingw64/share/qt6/bin/moc.exe" "$@"
