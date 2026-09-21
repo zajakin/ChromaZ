@@ -451,12 +451,19 @@ bool ContigWidget::loadProject(const QString &filePath) {
   return true;
 }
 
+// -------------------------------------------------------------------
+// ИСПРАВЛЕННЫЙ МЕТОД: Синхронизирует символы, Phred, позиции пиков И ТРАССЫ
+// -------------------------------------------------------------------
 void ContigWidget::trimLowQualityEnds(int minPhred) {
   pushUndoState();
   for (auto &tr : tracks) {
     auto &q = tr.originalData.qualityScores;
     auto &seq = tr.originalData.sequence;
     auto &ploc = tr.originalData.basePositions;
+    auto &tA = tr.originalData.traceA;
+    auto &tC = tr.originalData.traceC;
+    auto &tG = tr.originalData.traceG;
+    auto &tT = tr.originalData.traceT;
     
     if (seq.isEmpty()) continue;
     
@@ -472,8 +479,15 @@ void ContigWidget::trimLowQualityEnds(int minPhred) {
     
     if (start <= end && start < n) {
       int newLen = end - start + 1;
+      
+      // Вычисляем границы сэмплов сигналов до модификации ploc
+      int startSample = (start < pLen) ? ploc[start] : 0;
+      int endSample = (end + 1 < pLen) ? ploc[end + 1] : (!tA.empty() ? (int)tA.size() : 0);
+      
+      // 1. Обрезка символов
       seq = seq.mid(start, newLen);
       
+      // 2. Обрезка Phred оценок качества
       if (start < qLen) {
         int newQLen = std::min(newLen, qLen - start);
         q = std::vector<int>(q.begin() + start, q.begin() + start + newQLen);
@@ -481,9 +495,22 @@ void ContigWidget::trimLowQualityEnds(int minPhred) {
         q.clear();
       }
       
+      // 3. Обрезка хроматограмм сигналов A, C, G, T
+      if (startSample < endSample && !tA.empty() && endSample <= (int)tA.size()) {
+        tA = std::vector<int>(tA.begin() + startSample, tA.begin() + endSample);
+        tC = std::vector<int>(tC.begin() + startSample, tC.begin() + endSample);
+        tG = std::vector<int>(tG.begin() + startSample, tG.begin() + endSample);
+        tT = std::vector<int>(tT.begin() + startSample, tT.begin() + endSample);
+      }
+      
+      // 4. Обрезка и смещение координат пиков (basePositions)
       if (start < pLen) {
         int newPLen = std::min(newLen, pLen - start);
         ploc = std::vector<int>(ploc.begin() + start, ploc.begin() + start + newPLen);
+        for (auto &p : ploc) {
+          p -= startSample;
+          if (p < 0) p = 0;
+        }
       } else {
         ploc.clear();
       }
@@ -491,8 +518,13 @@ void ContigWidget::trimLowQualityEnds(int minPhred) {
       seq.clear();
       q.clear();
       ploc.clear();
+      tA.clear();
+      tC.clear();
+      tG.clear();
+      tT.clear();
     }
   }
+  
   runAlignment();
 }
 
