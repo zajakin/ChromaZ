@@ -11,6 +11,12 @@
 
 ---
 
+## Screenshot
+
+![Интерфейс ChromaZ](ChromaZ.png)
+
+---
+
 ## 📥 Downloads & Quick Installation
 
 Pre-compiled standalone installers are available directly in the root of this repository:
