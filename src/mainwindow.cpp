@@ -332,4 +332,4 @@ void MainWindow::findSequenceDialog() {
   bool ok;
   QString q = QInputDialog::getText(this, "Find Sequence", "Nucleotide query string:", QLineEdit::Normal, "", &ok);
   if (ok && !q.isEmpty()) contigWidget->findSequence(q, true);
-}\n
+}
