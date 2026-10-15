@@ -98,10 +98,11 @@ jobs:
         path: ChromaZ_Linux_Install_${{ env.APP_VERSION }}_amd64.deb
         retention-days: 30
 
-    - name: "Upload Linux to GitHub Release (on Tag)"
+    - name: "Upload Linux to GitHub Draft Release (on Tag)"
       uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/')
       with:
+        draft: true
         files: ChromaZ_Linux_Install_${{ env.APP_VERSION }}_amd64.deb
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -165,10 +166,11 @@ jobs:
         path: ChromaZ_Windows_Install_${{ env.APP_VERSION }}.exe
         retention-days: 30
 
-    - name: "Upload Windows to GitHub Release (on Tag)"
+    - name: "Upload Windows to GitHub Draft Release (on Tag)"
       uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/')
       with:
+        draft: true
         files: ChromaZ_Windows_Install_${{ env.APP_VERSION }}.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -227,10 +229,11 @@ jobs:
         path: ChromaZ_macOS_Install_${{ env.APP_VERSION }}.dmg
         retention-days: 30
 
-    - name: "Upload macOS to GitHub Release (on Tag)"
+    - name: "Upload macOS to GitHub Draft Release (on Tag)"
       uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/')
       with:
+        draft: true
         files: ChromaZ_macOS_Install_${{ env.APP_VERSION }}.dmg
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
