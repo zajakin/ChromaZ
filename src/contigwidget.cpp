@@ -487,7 +487,6 @@ void ContigWidget::showSequenceProperties() {
   QVBoxLayout *layout = new QVBoxLayout(&dialog);
   QTabWidget *tabs = new QTabWidget();
   
-  // Nucleotide Tab (GC Plot)
   QWidget *nucTab = new QWidget();
   QVBoxLayout *nl = new QVBoxLayout(nucTab);
   int gcCount = seq.count('G') + seq.count('g') + seq.count('C') + seq.count('c');
@@ -507,7 +506,6 @@ void ContigWidget::showSequenceProperties() {
   nl->addWidget(gcGraph);
   tabs->addTab(nucTab, "Nucleotide Properties");
   
-  // Protein Tab (Kyte-Doolittle)
   QWidget *protTab = new QWidget();
   QVBoxLayout *pl = new QVBoxLayout(protTab);
   QString aaSeq;
@@ -516,7 +514,7 @@ void ContigWidget::showSequenceProperties() {
     if (aa != ' ' && aa != '*') aaSeq += aa;
   }
   
-  double totalMW = 18.015; // H2O
+  double totalMW = 18.015;
   for (QChar aa : aaSeq) totalMW += getAAMolecularWeight(aa);
   
   pl->addWidget(new QLabel(QString("Translated Length: %1 aa\nMolecular Weight: %2 Da").arg(aaSeq.length()).arg(totalMW, 0, 'f', 2)));
@@ -1629,6 +1627,64 @@ void ContigWidget::keyPressEvent(QKeyEvent *event) {
       } else { read.remove(col, 1); }
       calculateConsensusAndSNPs(); updateLayoutGeometry(); update();
     }
+  }
+}
+
+void ContigWidget::copySelectedToClipboard() {
+  if (selTrack == SEL_NONE || selStartCol < 0 || selEndCol < 0) return;
+  int minC = std::min(selStartCol, selEndCol), maxC = std::max(selStartCol, selEndCol);
+  int len = maxC - minC + 1;
+  QString seq = "";
+  
+  if (selTrack == SEL_REF) seq = referenceSeq.mid(minC, len);
+  else if (selTrack == SEL_ORF1) seq = getOrfLine(0, referenceSeq).mid(minC, len);
+  else if (selTrack == SEL_ORF2) seq = getOrfLine(1, referenceSeq).mid(minC, len);
+  else if (selTrack == SEL_ORF3) seq = getOrfLine(2, referenceSeq).mid(minC, len);
+  else if (selTrack == SEL_ORF_REV1) seq = getOrfLine(3, referenceSeq).mid(minC, len);
+  else if (selTrack == SEL_ORF_REV2) seq = getOrfLine(4, referenceSeq).mid(minC, len);
+  else if (selTrack == SEL_ORF_REV3) seq = getOrfLine(5, referenceSeq).mid(minC, len);
+  else if (selTrack == SEL_CONSENSUS) seq = consensusSeq.mid(minC, len);
+  else if (selTrack == SEL_ORF_B1) seq = getOrfLine(0, consensusSeq).mid(minC, len);
+  else if (selTrack == SEL_ORF_B2) seq = getOrfLine(1, consensusSeq).mid(minC, len);
+  else if (selTrack == SEL_ORF_B3) seq = getOrfLine(2, consensusSeq).mid(minC, len);
+  else if (selTrack == SEL_ORF_BREV1) seq = getOrfLine(3, consensusSeq).mid(minC, len);
+  else if (selTrack == SEL_ORF_BREV2) seq = getOrfLine(4, consensusSeq).mid(minC, len);
+  else if (selTrack == SEL_ORF_BREV3) seq = getOrfLine(5, consensusSeq).mid(minC, len);
+  else if (selTrack >= 0 && selTrack < (int)tracks.size()) {
+    QString full = tracks[selTrack].alignment.alignedRead.isEmpty() ?
+    tracks[selTrack].originalData.sequence :
+    tracks[selTrack].alignment.alignedRead;
+    seq = full.mid(minC, len);
+  }
+  if (!seq.isEmpty()) QGuiApplication::clipboard()->setText(seq);
+}
+
+void ContigWidget::copySelectionAsImageToClipboard() {
+  if (selStartCol < 0 || selEndCol < 0) return;
+  
+  int minC = std::min(selStartCol, selEndCol);
+  int maxC = std::max(selStartCol, selEndCol);
+  int numCols = maxC - minC + 1;
+  
+  int imgWidth = numCols * scaleX + leftMarginWidth;
+  int imgHeight = getTrackY(tracks.size()) + 20;
+  
+  QImage image(imgWidth, imgHeight, QImage::Format_ARGB32);
+  image.fill(Qt::white);
+  
+  QPainter imgPainter(&image);
+  imgPainter.setRenderHint(QPainter::Antialiasing);
+  imgPainter.translate(-minC * scaleX, 0);
+  
+  render(&imgPainter);
+  QGuiApplication::clipboard()->setImage(image);
+}
+
+void ContigWidget::wheelEvent(QWheelEvent *event) {
+  if (event->modifiers() & Qt::ControlModifier) {
+    if (event->angleDelta().y() > 0) zoomInY(); else zoomOutY();
+  } else {
+    if (event->angleDelta().y() > 0) zoomInX(); else zoomOutX();
   }
 }
 

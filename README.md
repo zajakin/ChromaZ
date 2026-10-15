@@ -2,12 +2,12 @@
 
 ![C++17](https://img.shields.io/badge/Language-C%2B%2B17-blue.svg)
 ![Qt6](https://img.shields.io/badge/Framework-Qt%206-green.svg)
-![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey.svg)
+![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)
 ![License](https://img.shields.io/badge/License-MIT-orange.svg)
 
 **Languages: [English](README.md) | [Русский](README_RU.md)**
 
-**ChromaZ** is a cross-platform desktop C++/Qt6 application for contig assembly, Sanger sequencing chromatogram visualization, multiple sequence alignment, and bioinformatics analysis of nucleotide and amino acid sequences.
+**ChromaZ** is a cross-platform desktop C++/Qt6 application for contig assembly, Sanger sequencing chromatogram visualization, multiple sequence alignment, restriction mapping, and bioinformatics analysis of nucleotide and amino acid sequences.
 
 ---
 
@@ -19,11 +19,11 @@
 
 ## 📥 Downloads & Quick Installation
 
-Pre-compiled standalone installers are available directly in the root of this repository:
+Pre-compiled standalone installers are available on the [Releases](https://github.com/zajakin/ChromaZ/releases/latest/) page:
 
-* **Debian / Ubuntu**: [Download ChromaZ_Linux_Install_VERSION_amd64.deb](https://github.com/zajakin/ChromaZ/releases/latest/).
-* **Windows**: [Download ChromaZ_Windows_Install_VERSION.exe](https://github.com/zajakin/ChromaZ/releases/latest/).
-* **macOS**: [Download ChromaZ_macOS_Install_VERSION.dmg](https://github.com/zajakin/ChromaZ/releases/latest/)
+* **Debian / Ubuntu**: [Download ChromaZ_Linux_Install_VERSION_amd64.deb](https://github.com/zajakin/ChromaZ/releases/latest/)
+* **Windows**: [Download ChromaZ_Windows_Install_VERSION.exe](https://github.com/zajakin/ChromaZ/releases/latest/)
+* **macOS**: [Download ChromaZ_macOS_Install_VERSION.dmg](https://github.com/zajakin/ChromaZ/releases/latest/) (Universal binary for Apple Silicon & Intel)
 
 ---
 
@@ -52,6 +52,29 @@ Pre-compiled standalone installers are available directly in the root of this re
 
 ---
 
+### ✂️ Restriction Analysis & Vector Trimming
+* **REBASE Database Integration**: Built-in support for the commercial REBASE restriction enzyme database (`bionetc.txt` with ~800 enzymes) with automatic build-time retrieval and fallback to Qt resources.
+* **Cleavage Site Visualization**: Real-time rendering of restriction cut positions with enzyme labels angled above the consensus track, supporting degenerate IUPAC recognition sites and Type IIS shifted cutters (e.g., BsaI).
+* **UniVec Vector Trimming**: 1-click trimming of cloning vector backbones, sequencing primers, and adapters (M13, T7, SP6, etc.) from read ends using fuzzy pattern matching.
+
+---
+
+### 🔊 Audio Dictation (Text-to-Speech)
+* **Voice Readout for Sequence Proofreading**: Built-in audio playback using native system speech synthesizers (`Qt6::TextToSpeech`).
+* **Adjustable Reading Speed**: Context-menu speed control (0.5x, 1.0x, 1.5x) with comma-separated single-base pronunciation, allowing hands-free cross-verification against paper notes or external displays.
+
+---
+
+### 🔬 Molecular Biology & PCR Utilities
+* **PCR Primer Melting Temperature ($T_m$)**: Instant estimation of primer $T_m$ and GC% for selected segments via Wallace rule and nearest-neighbor approximation.
+* **1-Click NCBI BLASTn**: Send selected sequences or consensus directly to NCBI BLAST in your default web browser with query parameters pre-filled.
+* **Physicochemical Properties & Protein Graphs**:
+  * **GC Profile**: Interactive sliding-window curve of GC content across selected regions.
+  * **Kyte-Doolittle Hydrophobicity**: Hydropathy plot for translated reading frames.
+  * **Molecular Weight**: Total calculated peptide molecular weight (Da) with water loss compensation.
+
+---
+
 ### 🧪 Translation & 6-Frame Open Reading Frames (ORF)
 * **6 Open Reading Frames**: Translation and visualization of forward (+1, +2, +3) and reverse (-1, -2, -3) frames for protein-coding regions.
 * **Independent `ORF A` and `ORF B` Toggles**:
@@ -71,7 +94,9 @@ Pre-compiled standalone installers are available directly in the root of this re
 
 ---
 
-### 📄 Export & Project Management
+### 📄 Export, Printing & Project Management
+* **Direct Printing & Native Print Dialog**: Print multi-page alignment reports directly to physical or virtual printers via `Qt6::PrintSupport`.
+* **Annotated GenBank (.gbk) Export**: Export consensus sequences with generated `LOCUS`, `FEATURES` (annotated restriction sites and ORF CDS), and formatted `ORIGIN`.
 * **Copy Selection as Image**: Copy selected chromatogram segments along with trace peaks directly to the clipboard as PNG graphics.
 * **FASTA Export**: Export generated consensus sequence.
 * **PDF Export**: Multi-page PDF report generation with configurable bases per line.
@@ -89,13 +114,14 @@ Pre-compiled standalone installers are available directly in the root of this re
 | **FASTA / GenBank** | `.fasta`, `.fa`, `.gb`, `.gbk` | Reference sequences or multi-record reads |
 | **FASTQ** | `.fastq`, `.fq` | Sequence reads + Phred QC |
 | **Plain Text** | `.txt` | Raw nucleotide lines |
+| **GenBank Export** | `.gbk` | Annotated consensus export with features |
 | **ChromaZ Project** | `.ChromaZ` | Full assembly project workspace |
 
 ---
 
-## 🎹 Keyboard Shortcuts
+## 🎹 Keyboard Shortcuts & Actions
 
-| Shortcut | Action |
+| Shortcut / Action | Description |
 | :--- | :--- |
 | **Ctrl + O** | Open `.ChromaZ` project |
 | **Ctrl + S** | Save `.ChromaZ` project |
@@ -105,27 +131,27 @@ Pre-compiled standalone installers are available directly in the root of this re
 | **Ctrl + F** | Find sequence |
 | **Ctrl + Mouse Wheel** | Zoom Y-axis (Trace peak height) |
 | **Mouse Wheel** | Zoom X-axis (Base horizontal spacing) |
+| **Right Click Menu** | BLASTn, $T_m$ calc, properties graph, TTS readout, GenBank export |
 
 ---
 
 ## 🛠 Building & Compilation
 
 ### Prerequisites
-* C++17 compliant compiler (GCC 9+, Clang 10+, MSVC 2019+)
+* C++17 compliant compiler (GCC 11+, Clang 14+, MSVC 2019+)
 * CMake 3.16+
-* Qt 6.x (`Core`, `Gui`, `Widgets`, `Test` modules)
+* Qt 6.x (`Core`, `Gui`, `Widgets`, `Test`, `TextToSpeech`, `PrintSupport` modules)
 
-### Linux Build (Debian / Ubuntu / Fedora)
+### Linux Build (Debian Trixie / Ubuntu 24.04+)
 ```bash
-git clone [https://github.com/your-username/ChromaZ.git](https://github.com/your-username/ChromaZ.git)
+git clone https://github.com/zajakin/ChromaZ.git
 cd ChromaZ
-mkdir build && cd build
-cmake src/.. && make -j$(nproc)
-./ChromaZ
+cmake -B build -S src -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
+./build/ChromaZ
 ```
 
 ---
 
 ## 📜 License
 This project is licensed under the MIT License. See the LICENSE file for details.
-
