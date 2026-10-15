@@ -286,7 +286,6 @@ void ContigWidget::loadRestrictionEnzymes() {
     QString line = in.readLine().trimmed();
     if (line.isEmpty()) continue;
     
-    // Игнорируем блоки копирайта, заголовков и разделителей
     if (line.startsWith('#') || line.startsWith("..") || line.startsWith("=-=") ||
         line.startsWith("REBASE", Qt::CaseInsensitive) ||
         line.contains("Copyright", Qt::CaseInsensitive) ||
@@ -298,15 +297,12 @@ void ContigWidget::loadRestrictionEnzymes() {
     QStringList parts = line.split(QRegularExpression(R"(\s+)"), Qt::SkipEmptyParts);
     if (parts.size() < 2) continue;
     
-    // В BIONET название фермента всегда первое, а сайт гидролиза — ВСЕГДА ПОСЛЕДНИЙ токен
     QString name = parts.first();
     QString rawSite = parts.last();
     
-    // Проверяем, что rawSite содержит нуклеотиды IUPAC
     QString cleanMotif = rawSite;
     cleanMotif.remove(QRegularExpression(R"([^A-Za-z])"));
     
-    // Истинные сайты рестрикции имеют длину >= 3 и состоят строго из IUPAC символов
     if (cleanMotif.length() < 3) continue;
     if (!validIupacRegex.match(cleanMotif).hasMatch()) continue;
     
@@ -625,22 +621,6 @@ void ContigWidget::openInNcbiBlast() {
   QDesktopServices::openUrl(url);
 }
 
-void ContigWidget::showMeltingTemperature() {
-  QString seq = getSelectedSequence();
-  if (seq.isEmpty()) return;
-  int a = seq.count('A') + seq.count('a');
-  int t = seq.count('T') + seq.count('t');
-  int g = seq.count('G') + seq.count('g');
-  int c = seq.count('C') + seq.count('c');
-  int len = a + t + g + c;
-  if (len == 0) return;
-  double tm = (len < 14) ? ((a + t) * 2.0 + (g + c) * 4.0) : (64.9 + 41.0 * (g + c - 16.4) / len);
-  
-  QMessageBox::information(this, "PCR Melting Temperature",
-                           QString("Sequence Length: %1 bp\nGC Content: %2%\n\nEstimated Tm: %3 °C")
-                             .arg(len).arg((g+c)*100.0/len, 0, 'f', 1).arg(tm, 0, 'f', 1));
-}
-
 void ContigWidget::showSequenceProperties() {
   QString seq = getSelectedSequence();
   if (seq.isEmpty()) return;
@@ -651,19 +631,26 @@ void ContigWidget::showSequenceProperties() {
   QVBoxLayout *layout = new QVBoxLayout(&dialog);
   QTabWidget *tabs = new QTabWidget();
   
-  // --- Вкладка 1: Нуклеотидные свойства ---
+  // --- Вкладка 1: Нуклеотидные свойства и оценка Tm ---
   QWidget *nucTab = new QWidget();
   QVBoxLayout *nl = new QVBoxLayout(nucTab);
-  int gcCount = seq.count('G') + seq.count('g') + seq.count('C') + seq.count('c');
-  int atCount = seq.count('A') + seq.count('a') + seq.count('T') + seq.count('t');
-  double gcPercent = (seq.length() > 0) ? (gcCount * 100.0 / seq.length()) : 0.0;
-  double atPercent = (seq.length() > 0) ? (atCount * 100.0 / seq.length()) : 0.0;
+  int gcCount = seq.count('G', Qt::CaseInsensitive) + seq.count('C', Qt::CaseInsensitive);
+  int atCount = seq.count('A', Qt::CaseInsensitive) + seq.count('T', Qt::CaseInsensitive);
+  int totalLen = seq.length();
+  double gcPercent = (totalLen > 0) ? (gcCount * 100.0 / totalLen) : 0.0;
+  double atPercent = (totalLen > 0) ? (atCount * 100.0 / totalLen) : 0.0;
+  
+  double tm = 0.0;
+  if (totalLen > 0) {
+    tm = (totalLen < 14) ? (atCount * 2.0 + gcCount * 4.0) : (64.9 + 41.0 * (gcCount - 16.4) / totalLen);
+  }
   
   QLabel *lblNucSummary = new QLabel(
     QString("<b>Length:</b> %1 bp &nbsp;&nbsp;|&nbsp;&nbsp; "
               "<b>GC Content:</b> %2% &nbsp;&nbsp;|&nbsp;&nbsp; "
-              "<b>AT Content:</b> %3%")
-    .arg(seq.length()).arg(gcPercent, 0, 'f', 1).arg(atPercent, 0, 'f', 1));
+              "<b>AT Content:</b> %3% &nbsp;&nbsp;|&nbsp;&nbsp; "
+              "<b>Estimated Tm (PCR):</b> %4 °C")
+    .arg(totalLen).arg(gcPercent, 0, 'f', 1).arg(atPercent, 0, 'f', 1).arg(tm, 0, 'f', 1));
               lblNucSummary->setTextFormat(Qt::RichText);
               nl->addWidget(lblNucSummary);
               
@@ -675,13 +662,13 @@ void ContigWidget::showSequenceProperties() {
               txtNucSeq->setMaximumHeight(140);
               nl->addWidget(txtNucSeq);
               
-              int winGC = std::min(15, (int)seq.length());
+              int winGC = std::min(15, totalLen);
               if (winGC % 2 == 0) winGC++;
               int halfGC = winGC / 2;
               QVector<double> gcValues;
-              for (int i = 0; i < seq.length(); ++i) {
+              for (int i = 0; i < totalLen; ++i) {
                 int start = std::max(0, i - halfGC);
-                int end = std::min((int)seq.length() - 1, i + halfGC);
+                int end = std::min(totalLen - 1, i + halfGC);
                 int localGC = 0;
                 for (int j = start; j <= end; ++j) {
                   QChar c = seq[j].toUpper();
@@ -842,7 +829,6 @@ void ContigWidget::showPrintExportDialog() {
   dialog.resize(520, 420);
   QVBoxLayout *layout = new QVBoxLayout(&dialog);
   
-  // Группа 1: Направление вывода
   QGroupBox *grpDest = new QGroupBox("Output Target");
   QVBoxLayout *destLayout = new QVBoxLayout(grpDest);
   QRadioButton *rbPdf = new QRadioButton("Save as PDF Document (*.pdf)");
@@ -866,7 +852,6 @@ void ContigWidget::showPrintExportDialog() {
   connect(rbPdf, &QRadioButton::toggled, txtPdfPath, &QWidget::setEnabled);
   connect(rbPdf, &QRadioButton::toggled, btnBrowse, &QWidget::setEnabled);
   
-  // Группа 2: Опции вывода содержимого
   QGroupBox *grpOpts = new QGroupBox("Included Content");
   QVBoxLayout *optsLayout = new QVBoxLayout(grpOpts);
   QCheckBox *cbTraces = new QCheckBox("Print chromatogram peak curves (Traces)");
@@ -916,7 +901,6 @@ void ContigWidget::showPrintExportDialog() {
     cbOrf->setChecked(false);
   });
   
-  // Кнопки подтверждения
   QHBoxLayout *btnBox = new QHBoxLayout();
   QPushButton *btnOk = new QPushButton("Print / Export");
   QPushButton *btnCancel = new QPushButton("Cancel");
@@ -1020,14 +1004,12 @@ void ContigWidget::renderAlignmentToDevice(QPagedPaintDevice *device, const Prin
     
     ensureVerticalSpace(hTitle + hSeq * 2 + int(10 * s));
     
-    // Заголовок блока
     painter.setFont(blockHeaderFont);
     painter.setPen(Qt::black);
     painter.drawText(pageLeft, currentY + fmTitle.ascent(),
                      QString("Block %1 (Bases %2 - %3)").arg(b + 1).arg(startCol + 1).arg(endCol));
     currentY += hTitle;
     
-    // Референс
     if (opt.includeRef && !referenceSeq.isEmpty()) {
       ensureVerticalSpace(hCoord + hSeq + (opt.includeOrfA ? 6 * hOrf : 0));
       
@@ -1079,7 +1061,6 @@ void ContigWidget::renderAlignmentToDevice(QPagedPaintDevice *device, const Prin
       }
     }
     
-    // Консенсус
     if (opt.includeConsensus && !consensusSeq.isEmpty()) {
       ensureVerticalSpace(hCoord + hSeq + (opt.includeOrfB ? 6 * hOrf : 0));
       
@@ -1134,7 +1115,6 @@ void ContigWidget::renderAlignmentToDevice(QPagedPaintDevice *device, const Prin
     
     currentY += int(6 * s);
     
-    // Прочтения (Tracks)
     for (size_t t = 0; t < tracks.size(); ++t) {
       ensureVerticalSpace(singleTrackH);
       auto &track = tracks[t];
@@ -1166,7 +1146,7 @@ void ContigWidget::renderAlignmentToDevice(QPagedPaintDevice *device, const Prin
       }
       currentY += hCoord;
       
-      const int blockRawStart = rawBaseIdx; // индекс первого основания блока в исходном риде
+      const int blockRawStart = rawBaseIdx;
       painter.setFont(seqFont);
       for (int col = startCol; col < endCol && col < readAligned.length(); ++col) {
         double x = pageLeft + leftMarginWidth + (col - startCol) * baseStepX;
@@ -1254,23 +1234,22 @@ void ContigWidget::applyTrimToTrack(AlignedTrack &tr, int trimLeftCount, int tri
   auto &tC = tr.originalData.traceC;
   auto &tG = tr.originalData.traceG;
   auto &tT = tr.originalData.traceT;
-
+  
   int n = seq.length();
   if (n == 0) return;
-
+  
   int start = trimLeftCount;
   int end = n - 1 - trimRightCount;
-
+  
   if (start > end || start >= n) {
     seq.clear(); q.clear(); ploc.clear(); tA.clear(); tC.clear(); tG.clear(); tT.clear();
     return;
   }
-
+  
   int newLen = end - start + 1;
   int traceLen = 0;
   if (!tA.empty()) traceLen = std::min({(int)tA.size(), (int)tC.size(), (int)tG.size(), (int)tT.size()});
-
-  // Границы среза трассы — на середине между соседними пиками, чтобы не обрезать пик пополам.
+  
   int startSample = 0, endSample = traceLen;
   if (traceLen > 0 && !ploc.empty()) {
     if (start > 0 && start < (int)ploc.size()) startSample = (ploc[start - 1] + ploc[start]) / 2;
@@ -1278,14 +1257,14 @@ void ContigWidget::applyTrimToTrack(AlignedTrack &tr, int trimLeftCount, int tri
     startSample = std::clamp(startSample, 0, traceLen);
     endSample = std::clamp(endSample, startSample, traceLen);
   }
-
+  
   seq = seq.mid(start, newLen);
-
+  
   if (start < (int)q.size()) {
     int newQLen = std::min(newLen, (int)q.size() - start);
     q = std::vector<int>(q.begin() + start, q.begin() + start + newQLen);
   } else { q.clear(); }
-
+  
   bool traceSliced = false;
   if (traceLen > 0 && startSample < endSample) {
     tA = std::vector<int>(tA.begin() + startSample, tA.begin() + endSample);
@@ -1294,11 +1273,10 @@ void ContigWidget::applyTrimToTrack(AlignedTrack &tr, int trimLeftCount, int tri
     tT = std::vector<int>(tT.begin() + startSample, tT.begin() + endSample);
     traceSliced = true;
   }
-
+  
   if (start < (int)ploc.size()) {
     int newPLen = std::min(newLen, (int)ploc.size() - start);
     ploc = std::vector<int>(ploc.begin() + start, ploc.begin() + start + newPLen);
-    // сдвигаем позиции пиков только если трасса действительно обрезана с начала
     if (traceSliced) for (auto &p : ploc) { p -= startSample; if (p < 0) p = 0; }
   } else { ploc.clear(); }
 }
@@ -1308,15 +1286,14 @@ void ContigWidget::trimLowQualityEnds(int minPhred) {
   for (auto &tr : tracks) {
     auto &q = tr.originalData.qualityScores;
     int n = tr.originalData.sequence.length();
-    if (n == 0 || q.empty()) continue; // нет оценок качества (FASTA/TXT) — нечего обрезать
-
+    if (n == 0 || q.empty()) continue;
+    
     int start = 0;
     while (start < n && start < (int)q.size() && q[start] < minPhred) start++;
-
-    // основания без оценки качества считаем годными, иначе при q.size() < n терялся бы хвост
+    
     int end = n - 1;
     while (end >= start && end < (int)q.size() && q[end] < minPhred) end--;
-
+    
     int trimLeft = start;
     int trimRight = n - 1 - end;
     if (trimLeft > 0 || trimRight > 0) applyTrimToTrack(tr, trimLeft, trimRight);
@@ -1420,7 +1397,7 @@ bool ContigWidget::saveProject(const QString &filePath) {
     ab1Obj["qualityScores"] = vecToJson(tr.originalData.qualityScores);
     trObj["originalData"] = ab1Obj;
     
-    QJsonObject algObj;
+    QJsonObject algObj = trObj["alignment"].toObject();
     algObj["alignedRef"] = tr.alignment.alignedRef;
     algObj["alignedRead"] = tr.alignment.alignedRead;
     algObj["score"] = tr.alignment.score;
@@ -1920,22 +1897,47 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
   
   if (showRestrictionSites && !consensusSeq.isEmpty() && !restrictionEnzymes.empty()) {
     QString ungapped; std::vector<int> colMap;
-    for (int i = 0; i < consensusSeq.length(); ++i) { if (consensusSeq[i] != '-') { ungapped += consensusSeq[i].toUpper(); colMap.push_back(i); } }
-    int consY = curY + 10; painter.setFont(QFont("SansSerif", 7, QFont::Bold));
+    for (int i = 0; i < consensusSeq.length(); ++i) {
+      if (consensusSeq[i] != '-') {
+        ungapped += consensusSeq[i].toUpper();
+        colMap.push_back(i);
+      }
+    }
+    int consY = curY + 10;
+    std::map<int, QStringList> cutsByCol;
+    
     for (const auto& enz : restrictionEnzymes) {
-      int mLen = enz.motif.length(); if (ungapped.length() < mLen) continue;
+      int mLen = enz.motif.length();
+      if (ungapped.length() < mLen) continue;
       for (int pos = 0; pos <= ungapped.length() - mLen; ++pos) {
         bool match = true;
-        for (int j = 0; j < mLen; ++j) { if (!matchIupac(ungapped[pos + j], enz.motif[j])) { match = false; break; } }
+        for (int j = 0; j < mLen; ++j) {
+          if (!matchIupac(ungapped[pos + j], enz.motif[j])) { match = false; break; }
+        }
         if (match) {
           int cutPoint = pos + enz.cutIdx;
           if (cutPoint >= 0 && cutPoint < (int)colMap.size()) {
-            int realCol = colMap[cutPoint]; int x = leftMarginWidth + realCol * scaleX;
-            painter.setPen(Qt::darkRed); painter.drawLine(x, consY - 8, x, consY + 3);
-            painter.save(); painter.translate(x + 2, consY - 10); painter.rotate(-45); painter.drawText(0, 0, enz.name); painter.restore();
+            int realCol = colMap[cutPoint];
+            if (!cutsByCol[realCol].contains(enz.name)) {
+              cutsByCol[realCol].append(enz.name);
+            }
           }
         }
       }
+    }
+    
+    painter.setFont(QFont("SansSerif", 7, QFont::Bold));
+    for (const auto& [realCol, names] : cutsByCol) {
+      int x = leftMarginWidth + realCol * scaleX;
+      painter.setPen(Qt::darkRed);
+      painter.drawLine(x, consY - 8, x, consY + 3);
+      
+      QString label = names.join("/");
+      painter.save();
+      painter.translate(x + 2, consY - 10);
+      painter.rotate(-45);
+      painter.drawText(0, 0, label);
+      painter.restore();
     }
   }
   
@@ -2257,8 +2259,6 @@ void ContigWidget::contextMenuEvent(QContextMenuEvent *event) {
     connect(blastAct, &QAction::triggered, this, &ContigWidget::openInNcbiBlast);
     QAction *propAct = menu.addAction("📊 Sequence & Protein Properties");
     connect(propAct, &QAction::triggered, this, &ContigWidget::showSequenceProperties);
-    QAction *tmAct = menu.addAction("🔥 Calc PCR Melting Temp (Tm)");
-    connect(tmAct, &QAction::triggered, this, &ContigWidget::showMeltingTemperature);
     menu.addSeparator();
   }
   

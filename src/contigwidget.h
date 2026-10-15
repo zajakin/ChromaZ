@@ -97,6 +97,7 @@ public:
   bool isOrfBEnabled() const { return showOrfB; }
   bool isRestrictionSitesVisible() const { return showRestrictionSites; }
   AlignmentAlgorithm getAlignmentAlgorithm() const { return currentAlgorithm; }
+  int getTranslationTable() const { return translationTable; }
   
   bool saveProject(const QString &filePath);
   bool loadProject(const QString &filePath);
@@ -134,12 +135,10 @@ public:
   void setVoice(const QVoice &voice);
   
   void openInNcbiBlast();
-  void showMeltingTemperature();
   void showSequenceProperties();
   void exportConsensusGenBank(const QString &filePath);
   void exportConsensusGenBankPrompt();
   
-  // Единое модальное окно печати и экспорта отчетов
   void showPrintExportDialog();
   void renderAlignmentToDevice(QPagedPaintDevice *device, const PrintExportOptions &opt);
   
@@ -196,7 +195,7 @@ private:
   QString lastSearchQuery;
   
   bool isAutoReference = false;
-  bool suppressUndo = false; // не дублировать состояние отмены при внутренних вызовах runAlignment()
+  bool suppressUndo = false;
   std::vector<AlignedTrack> tracks;
   
   std::vector<WidgetState> undoStack;
