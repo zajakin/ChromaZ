@@ -16,6 +16,25 @@ set(CMAKE_AUTORCC ON)
 # Прокидываем версию внутрь C++ кода как глобальный макрос CHROMAZ_VERSION
 add_compile_definitions(CHROMAZ_VERSION="${APP_VERSION}")
 
+# Автоматическое скачивание коммерческой базы REBASE (bionetc), если файла нет локально
+set(BIONET_FILE "${CMAKE_CURRENT_SOURCE_DIR}/bionetc.txt")
+if(NOT EXISTS "${BIONET_FILE}")
+    message(STATUS "REBASE database not found locally. Downloading link_bionetc...")
+    file(DOWNLOAD
+        "https://rebase.neb.com/rebase/link_bionetc"
+        "${BIONET_FILE}"
+        STATUS download_status
+        TLS_VERIFY OFF
+    )
+    list(GET download_status 0 status_code)
+    list(GET download_status 1 error_msg)
+    if(NOT status_code EQUAL 0)
+        message(WARNING "Failed to download REBASE database: ${error_msg}. Will build without bundled database.")
+    else()
+        message(STATUS "REBASE database downloaded successfully to ${BIONET_FILE}.")
+    endif()
+endif()
+
 # Блокировка подтягивания Linux-заголовков Vulkan при кросс-компиляции
 if(CMAKE_CROSSCOMPILING)
     set(Vulkan_INCLUDE_DIR "" CACHE PATH "" FORCE)
@@ -35,11 +54,11 @@ if(CMAKE_CROSSCOMPILING)
     endif()
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Test)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Test TextToSpeech)
 
 # Принудительная фильтрация /usr/include из таргетов Qt
 if(CMAKE_CROSSCOMPILING)
-    foreach(qt_target Qt6::Core Qt6::Gui Qt6::Widgets)
+    foreach(qt_target Qt6::Core Qt6::Gui Qt6::Widgets Qt6::TextToSpeech)
         if(TARGET ${qt_target})
             get_target_property(target_incs ${qt_target} INTERFACE_INCLUDE_DIRECTORIES)
             if(target_incs)
@@ -60,6 +79,7 @@ add_executable(ChromaZ WIN32
     ab1parser.h
     alignmentengine.cpp
     alignmentengine.h
+    resources.qrc
 )
 
 if(APPLE)
@@ -72,7 +92,7 @@ if(APPLE)
     )
 endif()
 
-target_link_libraries(ChromaZ PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
+target_link_libraries(ChromaZ PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::TextToSpeech)
 
 # --- Блок авто-тестов ---
 enable_testing()

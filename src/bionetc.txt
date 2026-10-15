@@ -1,0 +1,736 @@
+ 
+REBASE version 610                                              bionetc.610
+ 
+    =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    REBASE, The Restriction Enzyme Database   http://rebase.neb.com
+    Copyright (c)  Dr. Richard J. Roberts, 2024.   All rights reserved.
+    =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 
+Rich Roberts                                                    Sep 28 2026
+ 
+AanI (PsiI)                       TTA^TAA
+AarI                              CACCTGCNNNN^
+AarI                              ^NNNNNNNNGCAGGTG
+AatII                             GACGT^C
+AbsI                              CC^TCGAGG
+AccI                              GT^MKAC
+AccII (FnuDII)                    CG^CG
+AccIII (BspMII)                   T^CCGGA
+Acc16I (MstI)                     TGC^GCA
+Acc36I (BspMI)                    ACCTGCNNNN^
+Acc36I (BspMI)                    ^NNNNNNNNGCAGGT
+Acc65I (KpnI)                     G^GTACC
+AccB1I (HgiCI)                    G^GYRCC
+AccB7I (PflMI)                    CCANNNN^NTGG
+AccBSI (BsrBI)                    CCG^CTC
+AccBSI (BsrBI)                    GAG^CGG
+AciI                              C^CGC
+AciI                              G^CGG
+AclI                              AA^CGTT
+AclWI (BinI)                      GGATCNNNN^
+AclWI (BinI)                      ^NNNNNGATCC
+AcoI (CfrI)                       Y^GGCCR
+AcsI (ApoI)                       R^AATTY
+AcuI (Eco57I)                     CTGAAGNNNNNNNNNNNNNNNN^
+AcuI (Eco57I)                     ^NNNNNNNNNNNNNNCTTCAG
+AcvI (PmaCI)                      CAC^GTG
+AcyI                              GR^CGYC
+AdeI (DraIII)                     CACNNN^GTG
+AfeI (Eco47III)                   AGC^GCT
+AfiI (BsiYI)                      CCNNNNN^NNGG
+AflII                             C^TTAAG
+AflIII                            A^CRYGT
+AgeI                              A^CCGGT
+AgsI                              TTS^AA
+AhdI (Eam1105I)                   GACNNN^NNGTC
+AhlI (SpeI)                       A^CTAGT
+AjiI (BtrI)                       CAC^GTC
+AjiI (BtrI)                       GAC^GTG
+AjnI (EcoRII)                     ^CCWGG
+AjuI                              GAANNNNNNNTTGGNNNNNNNNNNN^
+AjuI                              ^NNNNNNCCAANNNNNNNTTC
+AjuI                              CCAANNNNNNNTTCNNNNNNNNNNNN^
+AjuI                              ^NNNNNNNGAANNNNNNNTTGG
+AleI (OliI)                       CACNN^NNGTG
+AlfI                              GCANNNNNNTGCNNNNNNNNNNNN^
+AlfI                              ^NNNNNNNNNNGCANNNNNNTGC
+AlfI                              GCANNNNNNTGCNNNNNNNNNNNN^
+AlfI                              ^NNNNNNNNNNGCANNNNNNTGC
+AloI                              GAACNNNNNNTCCNNNNNNNNNNNN^
+AloI                              ^NNNNNNNGGANNNNNNGTTC
+AloI                              GGANNNNNNGTTCNNNNNNNNNNNN^
+AloI                              ^NNNNNNNGAACNNNNNNTCC
+AluI                              AG^CT
+AluBI (AluI)                      AG^CT
+AlwI (BinI)                       GGATCNNNN^
+AlwI (BinI)                       ^NNNNNGATCC
+Alw21I (HgiAI)                    GWGCW^C
+Alw26I (BsmAI)                    GTCTCN^
+Alw26I (BsmAI)                    ^NNNNNGAGAC
+Alw44I (ApaLI)                    G^TGCAC
+AlwNI                             CAGNNN^CTG
+Ama87I (AvaI)                     C^YCGRG
+Aor13HI (BspMII)                  T^CCGGA
+AoxI                              ^GGCC
+ApaI                              GGGCC^C
+ApaLI                             G^TGCAC
+ApeKI (TseI)                      G^CWGC
+ApoI                              R^AATTY
+ArsI                              GACNNNNNNTTYGNNNNNNNNNNN^
+ArsI                              ^NNNNNNCRAANNNNNNGTC
+ArsI                              CRAANNNNNNGTCNNNNNNNNNNNNN^
+ArsI                              ^NNNNNNNNGACNNNNNNTTYG
+AscI                              GG^CGCGCC
+AseI (VspI)                       AT^TAAT
+AsiGI (AgeI)                      A^CCGGT
+AsiSI (SgfI)                      GCGAT^CGC
+AspA2I (AvrII)                    C^CTAGG
+AspEI (Eam1105I)                  GACNNN^NNGTC
+AspLEI (HhaI)                     GCG^C
+AspS9I (AsuI)                     G^GNCC
+AsuII                             TT^CGAA
+AsuC2I (CauII)                    CC^SGG
+AsuHPI (HphI)                     GGTGANNNNNNNN^
+AsuHPI (HphI)                     ^NNNNNNNTCACC
+AsuNHI (NheI)                     G^CTAGC
+AvaI                              C^YCGRG
+AvaII                             G^GWCC
+AviII (MstI)                      TGC^GCA
+AvrII                             C^CTAGG
+AxyI (SauI)                       CC^TNAGG
+BaeI                              ACNNNNGTAYCNNNNNNNNNNNN^
+BaeI                              ^NNNNNNNGRTACNNNNGT
+BaeI                              GRTACNNNNGTNNNNNNNNNNNNNNN^
+BaeI                              ^NNNNNNNNNNACNNNNGTAYC
+BaeGI (BseSI)                     GKGCM^C
+BalI                              TGG^CCA
+BamHI                             G^GATCC
+BanI (HgiCI)                      G^GYRCC
+BanII (HgiJII)                    GRGCY^C
+BarI                              GAAGNNNNNNTACNNNNNNNNNNNN^
+BarI                              ^NNNNNNNGTANNNNNNCTTC
+BarI                              GTANNNNNNCTTCNNNNNNNNNNNN^
+BarI                              ^NNNNNNNGAAGNNNNNNTAC
+BauI (BsiI)                       C^ACGAG
+BauI (BsiI)                       C^TCGTG
+BbrPI (PmaCI)                     CAC^GTG
+BbsI (BbvII)                      GAAGACNN^
+BbsI (BbvII)                      ^NNNNNNGTCTTC
+BbuI (SphI)                       GCATG^C
+BbvI                              GCAGCNNNNNNNN^
+BbvI                              ^NNNNNNNNNNNNGCTGC
+Bbv12I (HgiAI)                    GWGCW^C
+BbvCI                             CC^TCAGC
+BbvCI                             GC^TGAGG
+BccI                              CCATCNNNN^
+BccI                              ^NNNNNGATGG
+BceAI (BcefI)                     ACGGCNNNNNNNNNNNN^
+BceAI (BcefI)                     ^NNNNNNNNNNNNNNGCCGT
+BcgI                              CGANNNNNNTGCNNNNNNNNNNNN^
+BcgI                              ^NNNNNNNNNNGCANNNNNNTCG
+BcgI                              GCANNNNNNTCGNNNNNNNNNNNN^
+BcgI                              ^NNNNNNNNNNCGANNNNNNTGC
+BciVI                             GTATCCNNNNNN^
+BciVI                             ^NNNNNGGATAC
+BclI                              T^GATCA
+BcnI (CauII)                      CC^SGG
+BcoDI (BsmAI)                     GTCTCN^
+BcoDI (BsmAI)                     ^NNNNNGAGAC
+BcuI (SpeI)                       A^CTAGT
+BfaI (MaeI)                       C^TAG
+BfmI (SfeI)                       C^TRYAG
+BfuI (BciVI)                      GTATCCNNNNNN^
+BfuI (BciVI)                      ^NNNNNGGATAC
+BfuAI (BspMI)                     ACCTGCNNNN^
+BfuAI (BspMI)                     ^NNNNNNNNGCAGGT
+BglI                              GCCNNNN^NGGC
+BglII                             A^GATCT
+BlpI (EspI)                       GC^TNAGC
+BlsI (BisI)                       GCN^GC
+BmcAI (ScaI)                      AGT^ACT
+Bme18I (AvaII)                    G^GWCC
+Bme1390I (ScrFI)                  CC^NGG
+BmeRI (Eam1105I)                  GACNNN^NNGTC
+BmgBI (BtrI)                      CAC^GTC
+BmgBI (BtrI)                      GAC^GTG
+BmiI (NlaIV)                      GGN^NCC
+BmrI (BfiI)                       ACTGGGNNNNN^
+BmrI (BfiI)                       ^NNNNCCCAGT
+BmrFI (ScrFI)                     CC^NGG
+BmtI (NheI)                       GCTAG^C
+BmuI (BfiI)                       ACTGGGNNNNN^
+BmuI (BfiI)                       ^NNNNCCCAGT
+BmyI (SduI)                       GDGCH^C
+BoxI (PshAI)                      GACNN^NNGTC
+BpiI (BbvII)                      GAAGACNN^
+BpiI (BbvII)                      ^NNNNNNGTCTTC
+BplI                              GAGNNNNNCTCNNNNNNNNNNNNN^
+BplI                              ^NNNNNNNNGAGNNNNNCTC
+BplI                              GAGNNNNNCTCNNNNNNNNNNNNN^
+BplI                              ^NNNNNNNNGAGNNNNNCTC
+BpmI (GsuI)                       CTGGAGNNNNNNNNNNNNNNNN^
+BpmI (GsuI)                       ^NNNNNNNNNNNNNNCTCCAG
+Bpu10I                            CC^TNAGC
+Bpu10I                            GC^TNAGG
+Bpu14I (AsuII)                    TT^CGAA
+Bpu1102I (EspI)                   GC^TNAGC
+BpuEI (Bce83I)                    CTTGAGNNNNNNNNNNNNNNNN^
+BpuEI (Bce83I)                    ^NNNNNNNNNNNNNNCTCAAG
+BpuMI (CauII)                     CC^SGG
+BsaI (Eco31I)                     GGTCTCN^
+BsaI (Eco31I)                     ^NNNNNGAGACC
+Bsa29I (ClaI)                     AT^CGAT
+BsaAI                             YAC^GTR
+BsaBI                             GATNN^NNATC
+BsaHI (AcyI)                      GR^CGYC
+BsaJI (SecI)                      C^CNNGG
+BsaMI (BsmI)                      GAATGCN^
+BsaMI (BsmI)                      G^CATTC
+BsaWI (BetI)                      W^CCGGW
+BsaXI                             ACNNNNNCTCCNNNNNNNNNN^
+BsaXI                             ^NNNNNNNGGAGNNNNNGT
+BsaXI                             GGAGNNNNNGTNNNNNNNNNNNN^
+BsaXI                             ^NNNNNNNNNACNNNNNCTCC
+Bsc4I (BsiYI)                     CCNNNNN^NNGG
+Bse1I (BsrI)                      ACTGGN^
+Bse1I (BsrI)                      C^CAGT
+Bse8I (BsaBI)                     GATNN^NNATC
+Bse21I (SauI)                     CC^TNAGG
+Bse118I (Cfr10I)                  R^CCGGY
+BseBI (EcoRII)                    CC^WGG
+BseDI (SecI)                      C^CNNGG
+Bse3DI (BsrDI)                    GCAATGNN^
+Bse3DI (BsrDI)                    ^CATTGC
+BseGI (FokI)                      GGATGNN^
+BseGI (FokI)                      ^CATCC
+BseJI (BsaBI)                     GATNN^NNATC
+BseLI (BsiYI)                     CCNNNNN^NNGG
+BseMI (BsrDI)                     GCAATGNN^
+BseMI (BsrDI)                     ^CATTGC
+BseMII                            CTCAGNNNNNNNNNN^
+BseMII                            ^NNNNNNNNCTGAG
+BseNI (BsrI)                      ACTGGN^
+BseNI (BsrI)                      C^CAGT
+BsePI                             G^CGCGC
+BseRI                             GAGGAGNNNNNNNNNN^
+BseRI                             ^NNNNNNNNCTCCTC
+BseSI                             GKGCM^C
+BseXI (BbvI)                      GCAGCNNNNNNNN^
+BseXI (BbvI)                      ^NNNNNNNNNNNNGCTGC
+BseX3I (XmaIII)                   C^GGCCG
+BseYI                             C^CCAGC
+BseYI                             G^CTGGG
+BsgI                              GTGCAGNNNNNNNNNNNNNNNN^
+BsgI                              ^NNNNNNNNNNNNNNCTGCAC
+Bsh1236I (FnuDII)                 CG^CG
+Bsh1285I (McrI)                   CGRY^CG
+BshNI (HgiCI)                     G^GYRCC
+BshTI (AgeI)                      A^CCGGT
+BshVI (ClaI)                      AT^CGAT
+BsiEI (McrI)                      CGRY^CG
+BsiHKAI (HgiAI)                   GWGCW^C
+BsiHKCI (AvaI)                    C^YCGRG
+BsiWI (SplI)                      C^GTACG
+BslI (BsiYI)                      CCNNNNN^NNGG
+BslFI (FinI)                      GGGACNNNNNNNNNN^
+BslFI (FinI)                      ^NNNNNNNNNNNNNNGTCCC
+BsmI                              GAATGCN^
+BsmI                              G^CATTC
+BsmAI                             GTCTCN^
+BsmAI                             ^NNNNNGAGAC
+BsmBI (Esp3I)                     CGTCTCN^
+BsmBI (Esp3I)                     ^NNNNNGAGACG
+BsmFI (FinI)                      GGGACNNNNNNNNNN^
+BsmFI (FinI)                      ^NNNNNNNNNNNNNNGTCCC
+BsnI (HaeIII)                     GG^CC
+Bso31I (Eco31I)                   GGTCTCN^
+Bso31I (Eco31I)                   ^NNNNNGAGACC
+BsoBI (AvaI)                      C^YCGRG
+Bsp13I (BspMII)                   T^CCGGA
+Bsp19I (NcoI)                     C^CATGG
+Bsp68I (NruI)                     TCG^CGA
+Bsp119I (AsuII)                   TT^CGAA
+Bsp120I (ApaI)                    G^GGCCC
+Bsp143I (MboI)                    ^GATC
+Bsp1286I (SduI)                   GDGCH^C
+Bsp1407I                          T^GTACA
+Bsp1720I (EspI)                   GC^TNAGC
+BspACI (AciI)                     C^CGC
+BspACI (AciI)                     G^CGG
+BspCNI (BseMII)                   CTCAGNNNNNNNNN^
+BspCNI (BseMII)                   ^NNNNNNNCTGAG
+BspDI (ClaI)                      AT^CGAT
+BspEI (BspMII)                    T^CCGGA
+BspFNI (FnuDII)                   CG^CG
+BspHI                             T^CATGA
+BspLI (NlaIV)                     GGN^NCC
+BspMI                             ACCTGCNNNN^
+BspMI                             ^NNNNNNNNGCAGGT
+BspOI (NheI)                      GCTAG^C
+BspPI (BinI)                      GGATCNNNN^
+BspPI (BinI)                      ^NNNNNGATCC
+BspQI (SapI)                      GCTCTTCN^
+BspQI (SapI)                      ^NNNNGAAGAGC
+BspTI (AflII)                     C^TTAAG
+BsrI                              ACTGGN^
+BsrI                              C^CAGT
+BsrBI                             CCG^CTC
+BsrBI                             GAG^CGG
+BsrDI                             GCAATGNN^
+BsrDI                             ^CATTGC
+BsrFI (Cfr10I)                    R^CCGGY
+BsrGI (Bsp1407I)                  T^GTACA
+BsrSI (BsrI)                      ACTGGN^
+BsrSI (BsrI)                      C^CAGT
+BssECI (SecI)                     C^CNNGG
+BssHII (BsePI)                    G^CGCGC
+BssMI (MboI)                      ^GATC
+BssNI (AcyI)                      GR^CGYC
+BssNAI (SnaI)                     GTA^TAC
+BssSI (BsiI)                      C^ACGAG
+BssSI (BsiI)                      C^TCGTG
+BssT1I (StyI)                     C^CWWGG
+Bst6I (Ksp632I)                   CTCTTCN^
+Bst6I (Ksp632I)                   ^NNNNGAAGAG
+Bst98I (AflII)                    C^TTAAG
+Bst1107I (SnaI)                   GTA^TAC
+BstACI (AcyI)                     GR^CGYC
+BstAFI (AflII)                    C^TTAAG
+BstAPI (ApaBI)                    GCANNNN^NTGC
+BstAUI (Bsp1407I)                 T^GTACA
+BstBI (AsuII)                     TT^CGAA
+Bst2BI (BsiI)                     C^ACGAG
+Bst2BI (BsiI)                     C^TCGTG
+BstBAI (BsaAI)                    YAC^GTR
+Bst4CI (Tsp4CI)                   ACN^GT
+BstC8I (Cac8I)                    GCN^NGC
+BstDEI (DdeI)                     C^TNAG
+BstDSI (DsaI)                     C^CRYGG
+BstEII                            G^GTNACC
+BstENI (EcoNI)                    CCTNN^NNNAGG
+BstFI (HindIII)                   A^AGCTT
+BstF5I (FokI)                     GGATGNN^
+BstF5I (FokI)                     ^CATCC
+BstFNI (FnuDII)                   CG^CG
+BstH2I (HaeII)                    RGCGC^Y
+BstHHI (HhaI)                     GCG^C
+BstKTI (MboI)                     GAT^C
+BstMAI (BsmAI)                    GTCTCN^
+BstMAI (BsmAI)                    ^NNNNNGAGAC
+BstMBI (MboI)                     ^GATC
+BstMCI (McrI)                     CGRY^CG
+BstMWI (MwoI)                     GCNNNNN^NNGC
+BstNI (EcoRII)                    CC^WGG
+BstNSI (NspI)                     RCATG^Y
+BstOI (EcoRII)                    CC^WGG
+BstPAI (PshAI)                    GACNN^NNGTC
+BstSCI (ScrFI)                    ^CCNGG
+BstSFI (SfeI)                     C^TRYAG
+BstSLI (BseSI)                    GKGCM^C
+BstSNI (SnaBI)                    TAC^GTA
+BstUI (FnuDII)                    CG^CG
+Bst2UI (EcoRII)                   CC^WGG
+BstV1I (BbvI)                     GCAGCNNNNNNNN^
+BstV1I (BbvI)                     ^NNNNNNNNNNNNGCTGC
+BstV2I (BbvII)                    GAAGACNN^
+BstV2I (BbvII)                    ^NNNNNNGTCTTC
+BstXI                             CCANNNNN^NTGG
+BstX2I (XhoII)                    R^GATCY
+BstYI (XhoII)                     R^GATCY
+BstZI (XmaIII)                    C^GGCCG
+BstZ17I (SnaI)                    GTA^TAC
+BsuI (BciVI)                      GTATCCNNNNNN^
+BsuI (BciVI)                      ^NNNNNGGATAC
+Bsu15I (ClaI)                     AT^CGAT
+Bsu36I (SauI)                     CC^TNAGG
+BsuRI (HaeIII)                    GG^CC
+BtgI (DsaI)                       C^CRYGG
+BtgZI                             GCGATGNNNNNNNNNN^
+BtgZI                             ^NNNNNNNNNNNNNNCATCGC
+BtrI                              CAC^GTC
+BtrI                              GAC^GTG
+BtsI                              GCAGTGNN^
+BtsI                              ^CACTGC
+BtsIMutI                          CAGTGNN^
+BtsIMutI                          ^CACTG
+BtsCI (FokI)                      GGATGNN^
+BtsCI (FokI)                      ^CATCC
+BtuMI (NruI)                      TCG^CGA
+BveI (BspMI)                      ACCTGCNNNN^
+BveI (BspMI)                      ^NNNNNNNNGCAGGT
+Cac8I                             GCN^NGC
+CaiI (AlwNI)                      CAGNNN^CTG
+CciI (BspHI)                      T^CATGA
+CciNI (NotI)                      GC^GGCCGC
+CelII (EspI)                      GC^TNAGC
+CfoI (HhaI)                       GCG^C
+Cfr9I (SmaI)                      C^CCGGG
+Cfr10I                            R^CCGGY
+Cfr13I (AsuI)                     G^GNCC
+Cfr42I (SacII)                    CCGC^GG
+ClaI                              AT^CGAT
+CpoI (RsrII)                      CG^GWCCG
+CseI (HgaI)                       GACGCNNNNN^
+CseI (HgaI)                       ^NNNNNNNNNNGCGTC
+CspI (RsrII)                      CG^GWCCG
+Csp6I (RsaI)                      G^TAC
+Csp45I (AsuII)                    TT^CGAA
+CspCI                             CAANNNNNGTGGNNNNNNNNNNNN^
+CspCI                             ^NNNNNNNNNNCCACNNNNNTTG
+CspCI                             CCACNNNNNTTGNNNNNNNNNNNNN^
+CspCI                             ^NNNNNNNNNNNCAANNNNNGTGG
+CviJI                             RG^CY
+CviKI-1 (CviJI)                   RG^CY
+CviQI (RsaI)                      G^TAC
+DdeI                              C^TNAG
+DinI (NarI)                       GGC^GCC
+DpnI                              GA^TC
+DpnII (MboI)                      ^GATC
+DraI (AhaIII)                     TTT^AAA
+DraIII                            CACNNN^GTG
+DrdI                              GACNNNN^NNGTC
+DriI (Eam1105I)                   GACNNN^NNGTC
+DsaI                              C^CRYGG
+DseDI (DrdI)                      GACNNNN^NNGTC
+EaeI (CfrI)                       Y^GGCCR
+EagI (XmaIII)                     C^GGCCG
+Eam1104I (Ksp632I)                CTCTTCN^
+Eam1104I (Ksp632I)                ^NNNNGAAGAG
+Eam1105I                          GACNNN^NNGTC
+EarI (Ksp632I)                    CTCTTCN^
+EarI (Ksp632I)                    ^NNNNGAAGAG
+EciI                              GGCGGANNNNNNNNNNN^
+EciI                              ^NNNNNNNNNTCCGCC
+Ecl136II (SacI)                   GAG^CTC
+EclHKI (Eam1105I)                 GACNNN^NNGTC
+Eco24I (HgiJII)                   GRGCY^C
+Eco31I                            GGTCTCN^
+Eco31I                            ^NNNNNGAGACC
+Eco32I (EcoRV)                    GAT^ATC
+Eco47I (AvaII)                    G^GWCC
+Eco47III                          AGC^GCT
+Eco52I (XmaIII)                   C^GGCCG
+Eco57I                            CTGAAGNNNNNNNNNNNNNNNN^
+Eco57I                            ^NNNNNNNNNNNNNNCTTCAG
+Eco72I (PmaCI)                    CAC^GTG
+Eco81I (SauI)                     CC^TNAGG
+Eco88I (AvaI)                     C^YCGRG
+Eco91I (BstEII)                   G^GTNACC
+Eco105I (SnaBI)                   TAC^GTA
+Eco130I (StyI)                    C^CWWGG
+Eco147I (StuI)                    AGG^CCT
+EcoICRI (SacI)                    GAG^CTC
+EcoNI                             CCTNN^NNNAGG
+EcoO109I (DraII)                  RG^GNCCY
+EcoRI                             G^AATTC
+EcoRII                            ^CCWGG
+EcoRV                             GAT^ATC
+EcoT38I (HgiJII)                  GRGCY^C
+Eco53kI (SacI)                    GAG^CTC
+EgeI (NarI)                       GGC^GCC
+EheI (NarI)                       GGC^GCC
+ErhI (StyI)                       C^CWWGG
+Esp3I                             CGTCTCN^
+Esp3I                             ^NNNNNGAGACG
+FaeI (NlaIII)                     CATG^
+FaiI                              YA^TR
+FalI                              AAGNNNNNCTTNNNNNNNNNNNNN^
+FalI                              ^NNNNNNNNAAGNNNNNCTT
+FalI                              AAGNNNNNCTTNNNNNNNNNNNNN^
+FalI                              ^NNNNNNNNAAGNNNNNCTT
+FaqI (FinI)                       GGGACNNNNNNNNNN^
+FaqI (FinI)                       ^NNNNNNNNNNNNNNGTCCC
+FatI (NlaIII)                     ^CATG
+FauI                              CCCGCNNNN^
+FauI                              ^NNNNNNGCGGG
+FauNDI (NdeI)                     CA^TATG
+FblI (AccI)                       GT^MKAC
+Fnu4HI                            GC^NGC
+FokI                              GGATGNNNNNNNNN^
+FokI                              ^NNNNNNNNNNNNNCATCC
+FriOI (HgiJII)                    GRGCY^C
+FseI                              GGCCGG^CC
+FspI (MstI)                       TGC^GCA
+FspAI                             RTGC^GCAY
+FspBI (MaeI)                      C^TAG
+Fsp4HI (Fnu4HI)                   GC^NGC
+GlaI                              GC^GC
+GluI (BisI)                       GC^NGC
+GsaI (BseYI)                      CCCAG^C
+GsaI (BseYI)                      GCTGG^G
+GsuI                              CTGGAGNNNNNNNNNNNNNNNN^
+GsuI                              ^NNNNNNNNNNNNNNCTCCAG
+HaeII                             RGCGC^Y
+HaeIII                            GG^CC
+HgaI                              GACGCNNNNN^
+HgaI                              ^NNNNNNNNNNGCGTC
+HhaI                              GCG^C
+Hin1I (AcyI)                      GR^CGYC
+Hin1II (NlaIII)                   CATG^
+Hin6I (HhaI)                      G^CGC
+HinP1I (HhaI)                     G^CGC
+HincII (HindII)                   GTY^RAC
+HindII                            GTY^RAC
+HindIII                           A^AGCTT
+HinfI                             G^ANTC
+HpaI                              GTT^AAC
+HpaII                             C^CGG
+HphI                              GGTGANNNNNNNN^
+HphI                              ^NNNNNNNTCACC
+Hpy8I (MjaIV)                     GTN^NAC
+Hpy99I                            CGWCG^
+Hpy166II (MjaIV)                  GTN^NAC
+Hpy188I                           TCN^GA
+Hpy188III (Hpy178III)             TC^NNGA
+HpyAV (Hin4II)                    CCTTCNNNNNN^
+HpyAV (Hin4II)                    ^NNNNNGAAGG
+HpyCH4III (Tsp4CI)                ACN^GT
+HpyCH4IV (MaeII)                  A^CGT
+HpyCH4V (CviRI)                   TG^CA
+HpyF3I (DdeI)                     C^TNAG
+HpyF10VI (MwoI)                   GCNNNNN^NNGC
+HpySE526I (MaeII)                 A^CGT
+Hsp92I (AcyI)                     GR^CGYC
+Hsp92II (NlaIII)                  CATG^
+HspAI (HhaI)                      G^CGC
+KasI (NarI)                       G^GCGCC
+KpnI                              GGTAC^C
+Kpn2I (BspMII)                    T^CCGGA
+KroI                              G^CCGGC
+KroNI (NaeI)                      GCC^GGC
+KspI (SacII)                      CCGC^GG
+Ksp22I (BclI)                     T^GATCA
+KspAI (HpaI)                      GTT^AAC
+Kzo9I (MboI)                      ^GATC
+LguI (SapI)                       GCTCTTCN^
+LguI (SapI)                       ^NNNNGAAGAGC
+LmnI                              GCTCCN^
+LmnI                              G^GAGC
+Lsp1109I (BbvI)                   GCAGCNNNNNNNN^
+Lsp1109I (BbvI)                   ^NNNNNNNNNNNNGCTGC
+LweI (SfaNI)                      GCATCNNNNN^
+LweI (SfaNI)                      ^NNNNNNNNNGATGC
+MabI (SexAI)                      A^CCWGGT
+MalI (DpnI)                       GA^TC
+MamI (BsaBI)                      GATNN^NNATC
+MauBI                             CG^CGCGCG
+MbiI (BsrBI)                      CCG^CTC
+MbiI (BsrBI)                      GAG^CGG
+MboI                              ^GATC
+MboII                             GAAGANNNNNNNN^
+MboII                             ^NNNNNNNTCTTC
+MfeI                              C^AATTG
+MhlI (SduI)                       GDGCH^C
+MlsI (BalI)                       TGG^CCA
+MluI                              A^CGCGT
+MluCI (TspEI)                     ^AATT
+MlyI (PleI)                       GAGTCNNNNN^
+MlyI (PleI)                       ^NNNNNGACTC
+Mly113I (NarI)                    GG^CGCC
+MmeI                              TCCRACNNNNNNNNNNNNNNNNNNNN^
+MmeI                              ^NNNNNNNNNNNNNNNNNNGTYGGA
+MnlI                              CCTCNNNNNNN^
+MnlI                              ^NNNNNNGAGG
+Mox20I (BalI)                     TGG^CCA
+Mph1103I (AvaIII)                 ATGCA^T
+MreI (Sse232I)                    CG^CCGGCG
+MroI (BspMII)                     T^CCGGA
+MroNI (NaeI)                      G^CCGGC
+MroXI (XmnI)                      GAANN^NNTTC
+MscI (BalI)                       TGG^CCA
+MseI                              T^TAA
+MslI                              CAYNN^NNRTG
+MspI (HpaII)                      C^CGG
+Msp20I (BalI)                     TGG^CCA
+MspA1I (NspBII)                   CMG^CKG
+MspJI                             CNNRNNNNNNNNN^
+MspJI                             ^NNNNNNNNNNNNNYNNG
+MspR9I (ScrFI)                    CC^NGG
+MssI (PmeI)                       GTTT^AAAC
+MteI                              GCGC^NGCGC
+MunI (MfeI)                       C^AATTG
+MvaI (EcoRII)                     CC^WGG
+Mva1269I (BsmI)                   GAATGCN^
+Mva1269I (BsmI)                   G^CATTC
+MwoI                              GCNNNNN^NNGC
+NaeI                              GCC^GGC
+NarI                              GG^CGCC
+NciI (CauII)                      CC^SGG
+NcoI                              C^CATGG
+NdeI                              CA^TATG
+NdeII (MboI)                      ^GATC
+NgoMIV (NaeI)                     G^CCGGC
+NheI                              G^CTAGC
+NlaIII                            CATG^
+NlaIV                             GGN^NCC
+NmeAIII                           GCCGAGNNNNNNNNNNNNNNNNNNNNN^
+NmeAIII                           ^NNNNNNNNNNNNNNNNNNNCTCGGC
+NmuCI (Tsp45I)                    ^GTSAC
+NotI                              GC^GGCCGC
+NruI                              TCG^CGA
+NsbI (MstI)                       TGC^GCA
+NsiI (AvaIII)                     ATGCA^T
+NspI                              RCATG^Y
+NspV (AsuII)                      TT^CGAA
+OliI                              CACNN^NNGTG
+PacI                              TTAAT^TAA
+PaeI (SphI)                       GCATG^C
+PaeR7I (XhoI)                     C^TCGAG
+PagI (BspHI)                      T^CATGA
+PalAI (AscI)                      GG^CGCGCC
+PaqCI (AarI)                      CACCTGCNNNN^
+PaqCI (AarI)                      ^NNNNNNNNGCAGGTG
+PasI                              CC^CWGGG
+PauI (BsePI)                      G^CGCGC
+PceI (StuI)                       AGG^CCT
+PciI (BspLU11I)                   A^CATGT
+PciSI (SapI)                      GCTCTTCN^
+PciSI (SapI)                      ^NNNNGAAGAGC
+PcsI                              WCGNNNN^NNNCGW
+PctI (BsmI)                       GAATGCN^
+PctI (BsmI)                       G^CATTC
+PdiI (NaeI)                       GCC^GGC
+PdmI (XmnI)                       GAANN^NNTTC
+PfeI (TfiI)                       G^AWTC
+Pfl23II (SplI)                    C^GTACG
+PflFI (Tth111I)                   GACN^NNGTC
+PflMI                             CCANNNN^NTGG
+PfoI                              T^CCNGGA
+PinAI (AgeI)                      A^CCGGT
+PkrI (BisI)                       GCN^GC
+PleI                              GAGTCNNNN^
+PleI                              ^NNNNNGACTC
+Ple19I (PvuI)                     CGAT^CG
+PluTI (NarI)                      GGCGC^C
+PmeI                              GTTT^AAAC
+PmlI (PmaCI)                      CAC^GTG
+PpsI (PleI)                       GAGTCNNNN^
+PpsI (PleI)                       ^NNNNNGACTC
+Ppu21I (BsaAI)                    YAC^GTR
+PpuMI                             RG^GWCCY
+PscI (BspLU11I)                   A^CATGT
+PshAI                             GACNN^NNGTC
+PsiI                              TTA^TAA
+Psp5II (PpuMI)                    RG^GWCCY
+Psp6I (EcoRII)                    ^CCWGG
+Psp1406I (AclI)                   AA^CGTT
+Psp124BI (SacI)                   GAGCT^C
+PspCI (PmaCI)                     CAC^GTG
+PspEI (BstEII)                    G^GTNACC
+PspGI (EcoRII)                    ^CCWGG
+PspLI (SplI)                      C^GTACG
+PspN4I (NlaIV)                    GGN^NCC
+PspOMI (ApaI)                     G^GGCCC
+PspPPI (PpuMI)                    RG^GWCCY
+PspXI                             VC^TCGAGB
+PsrI                              GAACNNNNNNTACNNNNNNNNNNNN^
+PsrI                              ^NNNNNNNGTANNNNNNGTTC
+PsrI                              GTANNNNNNGTTCNNNNNNNNNNNN^
+PsrI                              ^NNNNNNNGAACNNNNNNTAC
+PstI                              CTGCA^G
+PstNI (AlwNI)                     CAGNNN^CTG
+PsuI (XhoII)                      R^GATCY
+PsyI (Tth111I)                    GACN^NNGTC
+PvuI                              CGAT^CG
+PvuII                             CAG^CTG
+RgaI (SgfI)                       GCGAT^CGC
+RigI (FseI)                       GGCCGG^CC
+RsaI                              GT^AC
+RsaNI (RsaI)                      G^TAC
+RseI (MslI)                       CAYNN^NNRTG
+RsrII                             CG^GWCCG
+Rsr2I (RsrII)                     CG^GWCCG
+SacI                              GAGCT^C
+SacII                             CCGC^GG
+SalI                              G^TCGAC
+SapI                              GCTCTTCN^
+SapI                              ^NNNNGAAGAGC
+SatI (Fnu4HI)                     GC^NGC
+Sau96I (AsuI)                     G^GNCC
+Sau3AI (MboI)                     ^GATC
+SbfI (Sse8387I)                   CCTGCA^GG
+ScaI                              AGT^ACT
+SchI (PleI)                       GAGTCNNNNN^
+SchI (PleI)                       ^NNNNNGACTC
+ScrFI                             CC^NGG
+SdaI (Sse8387I)                   CCTGCA^GG
+SduI                              GDGCH^C
+SetI                              ASST^
+SexAI                             A^CCWGGT
+SfaAI (SgfI)                      GCGAT^CGC
+SfaNI                             GCATCNNNNN^
+SfaNI                             ^NNNNNNNNNGATGC
+SfcI (SfeI)                       C^TRYAG
+SfiI                              GGCCNNNN^NGGCC
+SfoI (NarI)                       GGC^GCC
+Sfr274I (XhoI)                    C^TCGAG
+Sfr303I (SacII)                   CCGC^GG
+SfuI (AsuII)                      TT^CGAA
+SgeI                              CNNGNNNNNNNNN^
+SgeI                              ^NNNNNNNNNNNNNCNNG
+SgfI                              GCGAT^CGC
+SgrAI                             CR^CCGGYG
+SgrDI                             CG^TCGACG
+SgsI (AscI)                       GG^CGCGCC
+SinI (AvaII)                      G^GWCC
+SmaI                              CCC^GGG
+SmiI (SwaI)                       ATTT^AAAT
+SmiMI (MslI)                      CAYNN^NNRTG
+SmlI                              C^TYRAG
+SmoI (SmlI)                       C^TYRAG
+SnaBI                             TAC^GTA
+SpeI                              A^CTAGT
+SphI                              GCATG^C
+SrfI                              GCCC^GGGC
+Sse9I (TspEI)                     ^AATT
+SsiI (AciI)                       C^CGC
+SsiI (AciI)                       G^CGG
+SspI                              AAT^ATT
+SspDI (NarI)                      G^GCGCC
+SspMI (MaeI)                      C^TAG
+StuI                              AGG^CCT
+StyI                              C^CWWGG
+StyD4I (ScrFI)                    ^CCNGG
+SwaI                              ATTT^AAAT
+TaaI (Tsp4CI)                     ACN^GT
+TaiI (MaeII)                      ACGT^
+TaqI                              T^CGA
+TaqII                             GACCGANNNNNNNNNNN^
+TaqII                             ^NNNNNNNNNTCGGTC
+TasI (TspEI)                      ^AATT
+TatI                              W^GTACW
+TauI                              GCSG^C
+TfiI                              G^AWTC
+Tru1I (MseI)                      T^TAA
+Tru9I (MseI)                      T^TAA
+TscAI (TspRI)                     CASTGNN^
+TseI                              G^CWGC
+TseFI (Tsp45I)                    ^GTSAC
+Tsp45I                            ^GTSAC
+TspDTI                            ATGAANNNNNNNNNNN^
+TspDTI                            ^NNNNNNNNNTTCAT
+TspGWI                            ACGGANNNNNNNNNNN^
+TspGWI                            ^NNNNNNNNNTCCGT
+TspMI (SmaI)                      C^CCGGG
+TspRI                             CASTGNN^
+Tth111I                           GACN^NNGTC
+Van91I (PflMI)                    CCANNNN^NTGG
+Vha464I (AflII)                   C^TTAAG
+VneI (ApaLI)                      G^TGCAC
+VspI                              AT^TAAT
+XagI (EcoNI)                      CCTNN^NNNAGG
+XapI (ApoI)                       R^AATTY
+XbaI                              T^CTAGA
+XceI (NspI)                       RCATG^Y
+XcmI                              CCANNNNN^NNNNTGG
+XhoI                              C^TCGAG
+XhoII                             R^GATCY
+XmaI (SmaI)                       C^CCGGG
+XmaCI (SmaI)                      C^CCGGG
+XmaJI (AvrII)                     C^CTAGG
+XmiI (AccI)                       GT^MKAC
+XmnI                              GAANN^NNTTC
+ZraI (AatII)                      GAC^GTC
+ZrmI (ScaI)                       AGT^ACT
+Zsp2I (AvaIII)                    ATGCA^T
+

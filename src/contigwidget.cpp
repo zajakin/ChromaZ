@@ -18,6 +18,9 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QLocale>
+#include <QCoreApplication>
+#include <QRegularExpression>
 #include <map>
 #include <algorithm>
 
@@ -41,7 +44,114 @@ ContigWidget::ContigWidget(QWidget *parent) : QWidget(parent) {
   setFocusPolicy(Qt::StrongFocus);
   setMouseTracking(true);
   setAcceptDrops(true);
+  
+  tts = new QTextToSpeech(this);
+  tts->setLocale(QLocale(QLocale::English, QLocale::UnitedStates));
+  tts->setRate(speechRate);
+  
+  loadRestrictionEnzymes();
   updateLayoutGeometry();
+}
+
+void ContigWidget::loadRestrictionEnzymes() {
+  restrictionEnzymes.clear();
+  
+  // Приоритет 1: Файл bionetc.txt рядом с исполняемым файлом
+  QString localPath = QCoreApplication::applicationDirPath() + "/bionetc.txt";
+  QFile file(localPath);
+  
+  // Приоритет 2: Встроенный ресурс Qt
+  if (!file.exists()) {
+    file.setFileName(":/bionetc.txt");
+  }
+  
+  if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+    return;
+  }
+  
+  QTextStream in(&file);
+  bool inData = false;
+  static const QRegularExpression iisRegex(R"(^([A-Za-z]+)\((-?\d+)/(-?\d+)\)$)");
+  
+  while (!in.atEnd()) {
+    QString line = in.readLine().trimmed();
+    if (line.isEmpty()) continue;
+    
+    // Формат BIONET начинает записи после двух точек '..'
+    if (!inData) {
+      if (line == ".." || line.startsWith("..")) {
+        inData = true;
+        continue;
+      }
+      if (line.contains(QRegularExpression(R"(^[A-Za-z0-9]+\s+[A-Za-z\^'_]+)"))) {
+        inData = true;
+      } else {
+        continue;
+      }
+    }
+    
+    if (line.startsWith('#') || line.startsWith("..") || line.startsWith("REBASE")) continue;
+    
+    QStringList parts = line.split(QRegularExpression(R"(\s+)"), Qt::SkipEmptyParts);
+    if (parts.size() < 2) continue;
+    
+    QString name = parts[0];
+    QString rawSite = parts[1];
+    
+    RestEnzyme enz;
+    enz.name = name;
+    
+    auto match = iisRegex.match(rawSite);
+    if (match.hasMatch()) {
+      // Фермент типа IIs (например, BsaI GGTCTC(1/5))
+      enz.motif = match.captured(1).toUpper();
+      int offset = match.captured(2).toInt();
+      enz.cutIdx = enz.motif.length() + offset;
+    } else {
+      // Классический сайт BIONET с метками разреза (G_ACGT'C, G^GTAC_C, G^AATTC)
+      QString s = rawSite;
+      int bottomCut = s.indexOf('_');
+      s.remove('_');
+      
+      int cut = s.indexOf('^');
+      if (cut == -1) cut = s.indexOf('\'');
+      
+      if (cut != -1) {
+        enz.cutIdx = cut;
+        s.remove('^').remove('\'');
+      } else if (bottomCut != -1) {
+        enz.cutIdx = bottomCut;
+      } else {
+        enz.cutIdx = s.length() / 2;
+      }
+      
+      s.remove(QRegularExpression(R"([^A-Za-z])"));
+      enz.motif = s.toUpper();
+    }
+    
+    if (!enz.motif.isEmpty()) {
+      restrictionEnzymes.push_back(enz);
+    }
+  }
+  file.close();
+}
+
+bool ContigWidget::matchIupac(QChar seqChar, QChar motifChar) const {
+  seqChar = seqChar.toUpper();
+  motifChar = motifChar.toUpper();
+  if (motifChar == seqChar) return true;
+  if (motifChar == 'N') return true;
+  if (motifChar == 'R') return (seqChar == 'A' || seqChar == 'G');
+  if (motifChar == 'Y') return (seqChar == 'C' || seqChar == 'T');
+  if (motifChar == 'S') return (seqChar == 'G' || seqChar == 'C');
+  if (motifChar == 'W') return (seqChar == 'A' || seqChar == 'T');
+  if (motifChar == 'K') return (seqChar == 'G' || seqChar == 'T');
+  if (motifChar == 'M') return (seqChar == 'A' || seqChar == 'C');
+  if (motifChar == 'B') return (seqChar == 'C' || seqChar == 'G' || seqChar == 'T');
+  if (motifChar == 'D') return (seqChar == 'A' || seqChar == 'G' || seqChar == 'T');
+  if (motifChar == 'H') return (seqChar == 'A' || seqChar == 'C' || seqChar == 'T');
+  if (motifChar == 'V') return (seqChar == 'A' || seqChar == 'C' || seqChar == 'G');
+  return false;
 }
 
 void ContigWidget::pushUndoState() {
@@ -197,9 +307,9 @@ QString ContigWidget::getOrfLine(int frame, const QString &targetSeq) const {
 }
 
 int ContigWidget::calculateHeaderHeight() const {
-  int h = 30; // Ref + Coords
+  int h = 30;
   if (showOrfA) h += 85;
-  h += 30; // Consensus + Coords
+  h += 30;
   if (showOrfB) h += 85;
   return h;
 }
@@ -314,6 +424,179 @@ void ContigWidget::setConsensusIupac(bool enable) {
   useIupacConsensus = enable;
   calculateConsensusAndSNPs();
   update();
+}
+
+void ContigWidget::toggleRestrictionSites(bool enable) {
+  showRestrictionSites = enable;
+  update();
+}
+
+void ContigWidget::readSelectionAloud() {
+  if (selTrack == SEL_NONE || selStartCol < 0 || selEndCol < 0) return;
+  int minC = std::min(selStartCol, selEndCol);
+  int maxC = std::max(selStartCol, selEndCol);
+  int len = maxC - minC + 1;
+  QString seq = "";
+  
+  if (selTrack == SEL_REF) seq = referenceSeq.mid(minC, len);
+  else if (selTrack == SEL_CONSENSUS) seq = consensusSeq.mid(minC, len);
+  else if (selTrack >= 0 && selTrack < (int)tracks.size()) {
+    QString full = tracks[selTrack].alignment.alignedRead.isEmpty() ? 
+    tracks[selTrack].originalData.sequence : 
+    tracks[selTrack].alignment.alignedRead;
+    seq = full.mid(minC, len);
+  }
+  
+  seq.remove('-');
+  if (seq.isEmpty()) return;
+  
+  QString spokenText;
+  for (QChar c : seq) {
+    spokenText += c;
+    spokenText += ", "; 
+  }
+  
+  if (tts) {
+    tts->stop();
+    tts->say(spokenText);
+  }
+}
+
+void ContigWidget::stopReading() {
+  if (tts) tts->stop();
+}
+
+void ContigWidget::setSpeechRate(double rate) {
+  speechRate = rate;
+  if (tts) tts->setRate(rate);
+}
+
+void ContigWidget::applyTrimToTrack(AlignedTrack &tr, int trimLeftCount, int trimRightCount) {
+  auto &q = tr.originalData.qualityScores;
+  auto &seq = tr.originalData.sequence;
+  auto &ploc = tr.originalData.basePositions;
+  auto &tA = tr.originalData.traceA;
+  auto &tC = tr.originalData.traceC;
+  auto &tG = tr.originalData.traceG;
+  auto &tT = tr.originalData.traceT;
+  
+  int n = seq.length();
+  if (n == 0) return;
+  
+  int start = trimLeftCount;
+  int end = n - 1 - trimRightCount;
+  
+  if (start <= end && start < n) {
+    int newLen = end - start + 1;
+    int startSample = (start < (int)ploc.size()) ? ploc[start] : 0;
+    int endSample = (end + 1 < (int)ploc.size()) ? ploc[end + 1] : (!tA.empty() ? (int)tA.size() : 0);
+    
+    seq = seq.mid(start, newLen);
+    
+    if (start < (int)q.size()) {
+      int newQLen = std::min(newLen, (int)q.size() - start);
+      q = std::vector<int>(q.begin() + start, q.begin() + start + newQLen);
+    } else { q.clear(); }
+    
+    if (startSample < endSample && !tA.empty() && endSample <= (int)tA.size()) {
+      tA = std::vector<int>(tA.begin() + startSample, tA.begin() + endSample);
+      tC = std::vector<int>(tC.begin() + startSample, tC.begin() + endSample);
+      tG = std::vector<int>(tG.begin() + startSample, tG.begin() + endSample);
+      tT = std::vector<int>(tT.begin() + startSample, tT.begin() + endSample);
+    }
+    
+    if (start < (int)ploc.size()) {
+      int newPLen = std::min(newLen, (int)ploc.size() - start);
+      ploc = std::vector<int>(ploc.begin() + start, ploc.begin() + start + newPLen);
+      for (auto &p : ploc) {
+        p -= startSample;
+        if (p < 0) p = 0;
+      }
+    } else { ploc.clear(); }
+  } else {
+    seq.clear(); q.clear(); ploc.clear(); tA.clear(); tC.clear(); tG.clear(); tT.clear();
+  }
+}
+
+void ContigWidget::trimLowQualityEnds(int minPhred) {
+  pushUndoState();
+  for (auto &tr : tracks) {
+    auto &q = tr.originalData.qualityScores;
+    int n = tr.originalData.sequence.length();
+    if (n == 0) continue;
+    
+    int start = 0;
+    while (start < n && start < (int)q.size() && q[start] < minPhred) start++;
+    
+    int end = std::min(n, (int)q.size()) - 1;
+    while (end >= start && q[end] < minPhred) end--;
+    
+    int trimLeft = start;
+    int trimRight = n - 1 - end;
+    if (trimLeft > 0 || trimRight > 0) {
+      applyTrimToTrack(tr, trimLeft, trimRight);
+    }
+  }
+  runAlignment();
+}
+
+int ContigWidget::findFuzzyMatch(const QString& text, const QString& pattern, int maxMismatches) {
+  if (pattern.isEmpty() || text.length() < pattern.length()) return -1;
+  for (int i = 0; i <= text.length() - pattern.length(); ++i) {
+    int mismatches = 0;
+    for (int j = 0; j < pattern.length(); ++j) {
+      if (text[i+j].toUpper() != pattern[j].toUpper()) mismatches++;
+      if (mismatches > maxMismatches) break;
+    }
+    if (mismatches <= maxMismatches) return i;
+  }
+  return -1;
+}
+
+void ContigWidget::trimVectors() {
+  pushUndoState();
+  struct VectorSeq { QString name; QString seq; };
+  const std::vector<VectorSeq> VECTORS = {
+    {"M13F", "GTAAAACGACGGCCAGT"}, {"M13R", "CAGGAAACAGCTATGAC"},
+     {"T7", "TAATACGACTCACTATAGGG"}, {"SP6", "ATTTAGGTGACACTATAG"}
+  };
+  
+  for (auto &tr : tracks) {
+    QString seq = tr.originalData.sequence;
+    if (seq.length() < 20) continue;
+    
+    int trimLeft = 0;
+    int trimRight = 0;
+    int searchWindow = std::min(150, (int)seq.length());
+    
+    QString head = seq.left(searchWindow);
+    QString tail = seq.right(searchWindow);
+    
+    for (const auto& v : VECTORS) {
+      int allowance = v.seq.length() / 8;
+      
+      int idx = findFuzzyMatch(head, v.seq, allowance);
+      if (idx != -1) trimLeft = std::max(trimLeft, idx + (int)v.seq.length());
+      
+      QString rcVec = Ab1Parser::reverseComplement(v.seq);
+      idx = findFuzzyMatch(head, rcVec, allowance);
+      if (idx != -1) trimLeft = std::max(trimLeft, idx + (int)rcVec.length());
+      
+      idx = findFuzzyMatch(tail, v.seq, allowance);
+      if (idx != -1) trimRight = std::max(trimRight, (int)tail.length() - idx);
+      
+      idx = findFuzzyMatch(tail, rcVec, allowance);
+      if (idx != -1) trimRight = std::max(trimRight, (int)tail.length() - idx);
+    }
+    
+    if (trimLeft > 0 || trimRight > 0) {
+      if (trimLeft + trimRight >= seq.length()) {
+        trimLeft = seq.length(); trimRight = 0;
+      }
+      applyTrimToTrack(tr, trimLeft, trimRight);
+    }
+  }
+  runAlignment();
 }
 
 bool ContigWidget::saveProject(const QString &filePath) {
@@ -449,83 +732,6 @@ bool ContigWidget::loadProject(const QString &filePath) {
   emit autoRCChanged(autoRCEnabled);
   emit projectLoaded(filePath);
   return true;
-}
-
-// -------------------------------------------------------------------
-// ИСПРАВЛЕННЫЙ МЕТОД: Синхронизирует символы, Phred, позиции пиков И ТРАССЫ
-// -------------------------------------------------------------------
-void ContigWidget::trimLowQualityEnds(int minPhred) {
-  pushUndoState();
-  for (auto &tr : tracks) {
-    auto &q = tr.originalData.qualityScores;
-    auto &seq = tr.originalData.sequence;
-    auto &ploc = tr.originalData.basePositions;
-    auto &tA = tr.originalData.traceA;
-    auto &tC = tr.originalData.traceC;
-    auto &tG = tr.originalData.traceG;
-    auto &tT = tr.originalData.traceT;
-    
-    if (seq.isEmpty()) continue;
-    
-    int n = seq.length();
-    int qLen = q.size();
-    int pLen = ploc.size();
-    
-    int start = 0;
-    while (start < n && start < qLen && q[start] < minPhred) start++;
-    
-    int end = std::min(n, qLen) - 1;
-    while (end >= start && q[end] < minPhred) end--;
-    
-    if (start <= end && start < n) {
-      int newLen = end - start + 1;
-      
-      // Вычисляем границы сэмплов сигналов до модификации ploc
-      int startSample = (start < pLen) ? ploc[start] : 0;
-      int endSample = (end + 1 < pLen) ? ploc[end + 1] : (!tA.empty() ? (int)tA.size() : 0);
-      
-      // 1. Обрезка символов
-      seq = seq.mid(start, newLen);
-      
-      // 2. Обрезка Phred оценок качества
-      if (start < qLen) {
-        int newQLen = std::min(newLen, qLen - start);
-        q = std::vector<int>(q.begin() + start, q.begin() + start + newQLen);
-      } else {
-        q.clear();
-      }
-      
-      // 3. Обрезка хроматограмм сигналов A, C, G, T
-      if (startSample < endSample && !tA.empty() && endSample <= (int)tA.size()) {
-        tA = std::vector<int>(tA.begin() + startSample, tA.begin() + endSample);
-        tC = std::vector<int>(tC.begin() + startSample, tC.begin() + endSample);
-        tG = std::vector<int>(tG.begin() + startSample, tG.begin() + endSample);
-        tT = std::vector<int>(tT.begin() + startSample, tT.begin() + endSample);
-      }
-      
-      // 4. Обрезка и смещение координат пиков (basePositions)
-      if (start < pLen) {
-        int newPLen = std::min(newLen, pLen - start);
-        ploc = std::vector<int>(ploc.begin() + start, ploc.begin() + start + newPLen);
-        for (auto &p : ploc) {
-          p -= startSample;
-          if (p < 0) p = 0;
-        }
-      } else {
-        ploc.clear();
-      }
-    } else {
-      seq.clear();
-      q.clear();
-      ploc.clear();
-      tA.clear();
-      tC.clear();
-      tG.clear();
-      tT.clear();
-    }
-  }
-  
-  runAlignment();
 }
 
 void ContigWidget::findSequence(const QString &query, bool forward) {
@@ -1238,7 +1444,6 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
     }
   }
   
-  // Выделение по клику мыши
   if (selTrack != SEL_NONE && selStartCol >= 0 && selEndCol >= 0) {
     int minC = std::min(selStartCol, selEndCol);
     int maxC = std::max(selStartCol, selEndCol);
@@ -1295,7 +1500,6 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
   }
   curY += 30;
   
-  // Отрисовка ORF A
   if (showOrfA) {
     int orfY[6] = { curY + 12, curY + 25, curY + 38, curY + 51, curY + 64, curY + 77 };
     QFont orfFont("Monospace", 8, QFont::Bold);
@@ -1321,6 +1525,53 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
   
   drawSequenceCoordinates(curY + 12, consensusSeq, QColor(156, 39, 176));
   
+  // Отрисовка сайтов рестрикции из базы REBASE
+  if (showRestrictionSites && !consensusSeq.isEmpty() && !restrictionEnzymes.empty()) {
+    QString ungapped;
+    std::vector<int> colMap;
+    for (int i = 0; i < consensusSeq.length(); ++i) {
+      if (consensusSeq[i] != '-') { 
+        ungapped += consensusSeq[i].toUpper(); 
+        colMap.push_back(i); 
+      }
+    }
+    
+    int consY = curY + 10;
+    painter.setFont(QFont("SansSerif", 7, QFont::Bold));
+    
+    for (const auto& enz : restrictionEnzymes) {
+      int mLen = enz.motif.length();
+      if (ungapped.length() < mLen) continue;
+      
+      for (int pos = 0; pos <= ungapped.length() - mLen; ++pos) {
+        bool match = true;
+        for (int j = 0; j < mLen; ++j) {
+          if (!matchIupac(ungapped[pos + j], enz.motif[j])) {
+            match = false;
+            break;
+          }
+        }
+        
+        if (match) {
+          int cutPoint = pos + enz.cutIdx;
+          if (cutPoint >= 0 && cutPoint < (int)colMap.size()) {
+            int realCol = colMap[cutPoint];
+            int x = leftMarginWidth + realCol * scaleX;
+            
+            painter.setPen(Qt::darkRed);
+            painter.drawLine(x, consY - 8, x, consY + 3);
+            
+            painter.save();
+            painter.translate(x + 2, consY - 10);
+            painter.rotate(-45);
+            painter.drawText(0, 0, enz.name);
+            painter.restore();
+          }
+        }
+      }
+    }
+  }
+  
   startY = curY + 25;
   painter.setFont(seqFont);
   
@@ -1337,7 +1588,6 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
   }
   curY += 30;
   
-  // Отрисовка ORF B
   if (showOrfB) {
     int orfY[6] = { curY + 12, curY + 25, curY + 38, curY + 51, curY + 64, curY + 77 };
     QFont orfFont("Monospace", 8, QFont::Bold);
@@ -1480,7 +1730,6 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
     currentY += trackHeight;
   }
   
-  // Отрисовка левой боковой панели меток
   painter.fillRect(scrollX, 0, leftMarginWidth - 5, height(), Qt::white);
   painter.setPen(QPen(Qt::gray, 2));
   painter.drawLine(scrollX + leftMarginWidth - 5, 0, scrollX + leftMarginWidth - 5, height());
@@ -1870,6 +2119,30 @@ void ContigWidget::contextMenuEvent(QContextMenuEvent *event) {
   
   QAction *copyImgAct = menu.addAction("🖼 Copy Selection as Image");
   connect(copyImgAct, &QAction::triggered, this, &ContigWidget::copySelectionAsImageToClipboard);
+  
+  menu.addSeparator();
+  
+  QAction *readAct = menu.addAction("🔊 Read Sequence Aloud");
+  connect(readAct, &QAction::triggered, this, &ContigWidget::readSelectionAloud);
+  
+  QAction *stopReadAct = menu.addAction("🔇 Stop Reading");
+  connect(stopReadAct, &QAction::triggered, this, &ContigWidget::stopReading);
+  
+  QMenu *speedMenu = menu.addMenu("⏱ Speech Speed");
+  QAction *speed05 = speedMenu->addAction("0.5x");
+  connect(speed05, &QAction::triggered, this, [this](){ setSpeechRate(-0.5); });
+  QAction *speed10 = speedMenu->addAction("1.0x (Normal)");
+  connect(speed10, &QAction::triggered, this, [this](){ setSpeechRate(0.0); });
+  QAction *speed15 = speedMenu->addAction("1.5x");
+  connect(speed15, &QAction::triggered, this, [this](){ setSpeechRate(0.5); });
+  
+  menu.addSeparator();
+  
+  QAction *resSitesAct = menu.addAction(showRestrictionSites ? "👁 Hide Restriction Sites" : "👁 Show Restriction Sites");
+  connect(resSitesAct, &QAction::triggered, this, [this]() { toggleRestrictionSites(!showRestrictionSites); });
+  
+  QAction *trimVecAct = menu.addAction("✂️ Trim Vectors (UniVec)");
+  connect(trimVecAct, &QAction::triggered, this, &ContigWidget::trimVectors);
   
   int t = getTrackFromY(event->pos().y());
   if (t >= 0 && t < (int)tracks.size()) {

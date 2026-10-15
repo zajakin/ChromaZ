@@ -9,6 +9,7 @@
 #include <QDropEvent>
 #include <QEvent>
 #include <vector>
+#include <QtTextToSpeech/QTextToSpeech>
 #include "ab1parser.h"
 #include "alignmentengine.h"
 
@@ -55,6 +56,12 @@ struct WidgetState {
   bool showOrfB;
 };
 
+struct RestEnzyme {
+  QString name;
+  QString motif;
+  int cutIdx;
+};
+
 class ContigWidget : public QWidget {
   Q_OBJECT
   
@@ -92,7 +99,15 @@ public:
   void setTranslationTable(int tableIdx);
   void setConsensusIupac(bool enable);
   void setMinIdentityThreshold(double val);
+  
   void trimLowQualityEnds(int minPhred = 20);
+  void trimVectors();
+  void toggleRestrictionSites(bool enable);
+  
+  void readSelectionAloud();
+  void stopReading();
+  void setSpeechRate(double rate);
+  
   void jumpNextSNP();
   void jumpPrevSNP();
   void findSequence(const QString &query, bool forward = true);
@@ -131,6 +146,10 @@ private:
   QChar translateCodon(const QString& codon, int tableIndex) const;
   QString getOrfLine(int frame, const QString &targetSeq) const;
   void pushUndoState();
+  void applyTrimToTrack(AlignedTrack &tr, int trimLeftCount, int trimRightCount);
+  int findFuzzyMatch(const QString& text, const QString& pattern, int maxMismatches);
+  void loadRestrictionEnzymes();
+  bool matchIupac(QChar seqChar, QChar motifChar) const;
   
   QString referenceSeq;
   QString consensusSeq;
@@ -168,6 +187,11 @@ private:
   int selStartCol = -1;   
   int selEndCol = -1;     
   bool isSelecting = false;
+  
+  QTextToSpeech *tts = nullptr;
+  double speechRate = 0.0;
+  bool showRestrictionSites = false;
+  std::vector<RestEnzyme> restrictionEnzymes;
 };
 
 #endif // CONTIGWIDGET_H
