@@ -42,7 +42,7 @@ jobs:
 
         apt-get update
         apt-get install -y qt6-base-dev qt6-base-dev-tools libqt6widgets6 libqt6gui6 libqt6core6 \
-                           libqt6texttospeech6-dev qtspeech6-speechd speech-dispatcher \
+                           libqt6texttospeech6-dev qtspeech6-speechd-plugin speech-dispatcher \
                            cmake make build-essential librsvg2-bin imagemagick ca-certificates
 
         rsvg-convert -f png -w 256 -h 256 src/app.svg -o chromaz.png
@@ -60,7 +60,7 @@ jobs:
         Section: science
         Priority: optional
         Architecture: amd64
-        Depends: libqt6widgets6 (>= 6.0.0), libqt6gui6 (>= 6.0.0), libqt6core6 (>= 6.0.0), libqt6texttospeech6 (>= 6.0.0), speech-dispatcher, libc6 (>= 2.27)
+        Depends: libqt6widgets6 (>= 6.0.0), libqt6gui6 (>= 6.0.0), libqt6core6 (>= 6.0.0), libqt6texttospeech6 (>= 6.0.0), qtspeech6-speechd-plugin, speech-dispatcher, libc6 (>= 2.27)
         Maintainer: Pawel Zayakin <pz@magisters.net>
         Description: Sanger Chromatogram Alignment and Contig Viewer
          ChromaZ allows viewing Sanger AB1 chromatograms, sequence alignment,
@@ -87,9 +87,9 @@ jobs:
         EOF
         chmod +x build_deb.sh
 
-    - name: Run Linux Build inside Debian 12 Container
+    - name: Run Linux Build inside Debian Container
       run: |
-        docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace debian:bookworm ./build_deb.sh "${{ env.APP_VERSION }}"
+        docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace debian:trixie ./build_deb.sh "${{ env.APP_VERSION }}"
 
     - name: Upload Linux Artifact
       uses: actions/upload-artifact@v7
