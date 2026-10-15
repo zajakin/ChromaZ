@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   # -------------------------------------------------------------------
-  # 1. LINUX (.deb) BUILD IN DEBIAN DOCKER
+  # 1. LINUX (.deb) BUILD IN DEBIAN TRIXIE DOCKER
   # -------------------------------------------------------------------
   build-linux:
     runs-on: ubuntu-latest
@@ -42,7 +42,7 @@ jobs:
 
         apt-get update
         apt-get install -y qt6-base-dev qt6-base-dev-tools libqt6widgets6 libqt6gui6 libqt6core6 \
-                           libqt6texttospeech6-dev qtspeech6-speechd-plugin speech-dispatcher \
+                           qt6-speech-dev qt6-speech-speechd-plugin speech-dispatcher \
                            cmake make build-essential librsvg2-bin imagemagick ca-certificates
 
         rsvg-convert -f png -w 256 -h 256 src/app.svg -o chromaz.png
@@ -60,7 +60,7 @@ jobs:
         Section: science
         Priority: optional
         Architecture: amd64
-        Depends: libqt6widgets6 (>= 6.0.0), libqt6gui6 (>= 6.0.0), libqt6core6 (>= 6.0.0), libqt6texttospeech6 (>= 6.0.0), qtspeech6-speechd-plugin, speech-dispatcher, libc6 (>= 2.27)
+        Depends: libqt6widgets6 (>= 6.0.0), libqt6gui6 (>= 6.0.0), libqt6core6 (>= 6.0.0), libqt6texttospeech6 (>= 6.0.0), qt6-speech-speechd-plugin, speech-dispatcher, libc6 (>= 2.27)
         Maintainer: Pawel Zayakin <pz@magisters.net>
         Description: Sanger Chromatogram Alignment and Contig Viewer
          ChromaZ allows viewing Sanger AB1 chromatograms, sequence alignment,
@@ -87,7 +87,7 @@ jobs:
         EOF
         chmod +x build_deb.sh
 
-    - name: Run Linux Build inside Debian Container
+    - name: Run Linux Build inside Debian Trixie Container
       run: |
         docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace debian:trixie ./build_deb.sh "${{ env.APP_VERSION }}"
 
@@ -135,7 +135,7 @@ jobs:
         host: 'windows'
         target: 'desktop'
         arch: 'win64_msvc2019_64'
-        modules: 'qtspeech'
+        modules: 'qtspeech qtmultimedia'
 
     - name: Install NSIS & Add to Path
       run: |
@@ -201,7 +201,7 @@ jobs:
         host: 'mac'
         target: 'desktop'
         arch: 'clang_64'
-        modules: 'qtspeech'
+        modules: 'qtspeech qtmultimedia'
 
     - name: "Configure CMake (Universal Binary: Intel + Apple Silicon)"
       run: |
