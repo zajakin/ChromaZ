@@ -3,12 +3,11 @@
 
 #include <QMainWindow>
 #include <QScrollArea>
-#include <QLineEdit>
 #include <QComboBox>
+#include <QSlider>
+#include <QLabel>
 #include <QAction>
-#include <QString>
-#include <QResizeEvent>
-
+#include <QMenu>
 #include "contigwidget.h"
 
 class MainWindow : public QMainWindow {
@@ -18,31 +17,62 @@ public:
   explicit MainWindow(QWidget *parent = nullptr);
   ~MainWindow() override = default;
   
-protected:
-  // Переопределение события изменения размера окна
-  void resizeEvent(QResizeEvent *event) override;
-  
   private slots:
-    // Слоты, явно реализованные в mainwindow.cpp
-    void openProject();
+    void openFiles();
+  void openProject();
   void saveProject();
-  void openAb1Files();
-  void openFastaFile();
-  void showAboutDialog();
+  void findSequenceDialog();
+  void updateVoiceActions();
   
 private:
-  // Указатели на виджеты и экшены, используемые в конструкторе и методах
-  ContigWidget *contigView = nullptr;
+  void createActions();
+  void createMenus();
+  void createToolBars();
+  
+  ContigWidget *contigWidget = nullptr;
   QScrollArea *scrollArea = nullptr;
-  QLineEdit *searchEdit = nullptr;
-  QComboBox *algoCombo = nullptr;
   
-  QAction *iupacAction = nullptr;
-  QAction *orfAAction = nullptr;
-  QAction *orfBAction = nullptr;
-  QAction *autoRCAct = nullptr;
+  QComboBox *voiceCombo = nullptr;
+  QSlider *speedSlider = nullptr;
+  QLabel *speedLabel = nullptr;
   
-  QString currentProjectPath;
+  QAction *actOpen = nullptr;
+  QAction *actOpenProj = nullptr;
+  QAction *actSaveProj = nullptr;
+  QAction *actExportFasta = nullptr;
+  QAction *actExportGenBank = nullptr;
+  QAction *actExportImage = nullptr;
+  QAction *actPrintExport = nullptr;
+  QAction *actExit = nullptr;
+  
+  QAction *actUndo = nullptr;
+  QAction *actRedo = nullptr;
+  QAction *actCopySeq = nullptr;
+  QAction *actCopyImg = nullptr;
+  QAction *actFind = nullptr;
+  QAction *actTrimQuality = nullptr;
+  QAction *actTrimVectors = nullptr;
+  
+  QAction *actZoomInX = nullptr;
+  QAction *actZoomOutX = nullptr;
+  QAction *actZoomInY = nullptr;
+  QAction *actZoomOutY = nullptr;
+  QAction *actResetZoom = nullptr;
+  QAction *actToggleOrfA = nullptr;
+  QAction *actToggleOrfB = nullptr;
+  QAction *actToggleRestr = nullptr;
+  
+  QAction *actBlast = nullptr;
+  QAction *actProps = nullptr;
+  QAction *actTm = nullptr;
+  QAction *actNextSnp = nullptr;
+  QAction *actPrevSnp = nullptr;
+  
+  QAction *actReadAloud = nullptr;
+  QAction *actStopRead = nullptr;
+  
+  QMenu *menuVoice = nullptr;
+  QMenu *menuSpeed = nullptr;
 };
 
 #endif // MAINWINDOW_H

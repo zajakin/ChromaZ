@@ -10,6 +10,7 @@
 #include <QEvent>
 #include <vector>
 #include <QtTextToSpeech/QTextToSpeech>
+#include <QtTextToSpeech/QVoice>
 #include <QPagedPaintDevice>
 #include "ab1parser.h"
 #include "alignmentengine.h"
@@ -63,6 +64,19 @@ struct RestEnzyme {
   int cutIdx;
 };
 
+struct PrintExportOptions {
+  enum OutputType { PdfFile, SystemPrinter };
+  OutputType outputType = PdfFile;
+  QString pdfPath = "ChromaZ_Alignment.pdf";
+  int basesPerLine = 60;
+  bool includeTraces = true;
+  bool includeQuality = true;
+  bool includeOrfA = true;
+  bool includeOrfB = true;
+  bool includeRef = true;
+  bool includeConsensus = true;
+};
+
 class ContigWidget : public QWidget {
   Q_OBJECT
   
@@ -80,14 +94,22 @@ public:
   bool isAutoRCEnabled() const { return autoRCEnabled; }
   bool isOrfAEnabled() const { return showOrfA; }
   bool isOrfBEnabled() const { return showOrfB; }
+  bool isRestrictionSitesVisible() const { return showRestrictionSites; }
   AlignmentAlgorithm getAlignmentAlgorithm() const { return currentAlgorithm; }
   
   bool saveProject(const QString &filePath);
   bool loadProject(const QString &filePath);
   
+  QList<QVoice> getAvailableVoices() const;
+  QVoice getCurrentVoice() const;
+  double getSpeechRate() const { return speechRate; }
+  
   signals:
     void projectLoaded(const QString &filePath);
   void autoRCChanged(bool enabled);
+  void restrictionSitesToggled(bool visible);
+  void speechRateChanged(double rate);
+  void voiceChanged(const QVoice &voice);
   
   public slots:
     void undo();
@@ -108,20 +130,23 @@ public:
   void readSelectionAloud();
   void stopReading();
   void setSpeechRate(double rate);
+  void setVoice(const QVoice &voice);
   
-  // Новые слоты интеграции
   void openInNcbiBlast();
   void showMeltingTemperature();
   void showSequenceProperties();
   void exportConsensusGenBank(const QString &filePath);
-  void printDirect();
+  void exportConsensusGenBankPrompt();
+  
+  // Единое модальное окно печати и экспорта отчетов
+  void showPrintExportDialog();
+  void renderAlignmentToDevice(QPagedPaintDevice *device, const PrintExportOptions &opt);
   
   void jumpNextSNP();
   void jumpPrevSNP();
   void findSequence(const QString &query, bool forward = true);
   void exportConsensusFasta(const QString &filePath);
   void exportViewImage(const QString &filePath);
-  void exportPdf(const QString &filePath, int basesPerLine = 80);
   void zoomInX(); void zoomOutX();
   void zoomInY(); void zoomOutY();
   void increaseTrackHeight(); void decreaseTrackHeight();
@@ -159,7 +184,6 @@ private:
   void loadRestrictionEnzymes();
   bool matchIupac(QChar seqChar, QChar motifChar) const;
   QString getSelectedSequence() const;
-  void renderAlignmentToDevice(QPagedPaintDevice *device, int basesPerLine);
   
   QString referenceSeq;
   QString consensusSeq;

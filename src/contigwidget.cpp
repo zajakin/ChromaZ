@@ -28,10 +28,19 @@
 #include <QPrintDialog>
 #include <QPrinter>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QTabWidget>
 #include <QDialog>
 #include <QDateTime>
+#include <QFileDialog>
+#include <QPlainTextEdit>
+#include <QRadioButton>
+#include <QCheckBox>
+#include <QSpinBox>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QGroupBox>
 #include <map>
 #include <algorithm>
 
@@ -40,43 +49,6 @@ struct CursorGuard {
   CursorGuard() { QGuiApplication::setOverrideCursor(Qt::WaitCursor); }
   ~CursorGuard() { QGuiApplication::restoreOverrideCursor(); }
 };
-  
-  class SimpleGraphWidget : public QWidget {
-  public:
-    QVector<double> values;
-    QColor color;
-    double minV = 0.0, maxV = 1.0;
-    
-    SimpleGraphWidget(QColor c, QWidget* parent = nullptr) : QWidget(parent), color(c) {
-      setMinimumHeight(150);
-    }
-    
-    void paintEvent(QPaintEvent*) override {
-      QPainter p(this);
-      p.setRenderHint(QPainter::Antialiasing);
-      p.fillRect(rect(), Qt::white);
-      p.setPen(Qt::lightGray);
-      p.drawRect(0, 0, width()-1, height()-1);
-      
-      if (values.isEmpty()) return;
-      
-      p.drawLine(0, height()/2, width(), height()/2);
-      
-      QPainterPath path;
-      double stepX = double(width()) / std::max(1, (int)values.size() - 1);
-      double range = maxV - minV;
-      if (range == 0) range = 1.0;
-      
-      for (int i = 0; i < values.size(); ++i) {
-        double norm = (values[i] - minV) / range;
-        double x = i * stepX;
-        double y = height() - norm * height();
-        if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
-      }
-      p.setPen(QPen(color, 2));
-      p.drawPath(path);
-    }
-  };
   
   double getAAMolecularWeight(QChar aa) {
     switch (aa.toUpper().toLatin1()) {
@@ -101,6 +73,161 @@ struct CursorGuard {
     case 'Y': return -1.3; case 'V': return 4.2;  default: return 0.0;
     }
   }
+  
+  QString formatSequenceWithCoordinates(const QString &seq, int lineLength = 60, int blockSize = 10) {
+    QString out;
+    int n = seq.length();
+    int maxCoordDigits = QString::number(n).length();
+    int labelWidth = std::max(6, maxCoordDigits + 2);
+    
+    for (int i = 0; i < n; i += lineLength) {
+      int coord = i + 1;
+      out += QString("%1 ").arg(coord, labelWidth, 10, QChar(' '));
+      for (int j = 0; j < lineLength && i + j < n; j += blockSize) {
+        out += seq.mid(i + j, blockSize) + " ";
+      }
+      out.chop(1);
+      out += "\n";
+    }
+    return out;
+  }
+  
+  class SequenceGraphWidget : public QWidget {
+  public:
+    QVector<double> values;
+    QString sequence;
+    QColor lineColor;
+    double minV = 0.0, maxV = 1.0;
+    double baselineVal = 0.0;
+    bool showBaseline = true;
+    QString topLabel;
+    QString bottomLabel;
+    double baseStepX = 18.0;
+    
+    SequenceGraphWidget(QColor color, QWidget *parent = nullptr)
+      : QWidget(parent), lineColor(color) {
+      setMinimumHeight(180);
+    }
+    
+    void updateDimensions(int availableWidth) {
+      if (values.isEmpty()) {
+        resize(availableWidth, 180);
+        return;
+      }
+      double neededWidth = 60 + values.size() * baseStepX + 40;
+      int finalWidth = std::max((int)neededWidth, availableWidth);
+      setMinimumWidth(finalWidth);
+      resize(finalWidth, 180);
+    }
+    
+    void paintEvent(QPaintEvent *) override {
+      QPainter p(this);
+      p.setRenderHint(QPainter::Antialiasing);
+      p.fillRect(rect(), Qt::white);
+      
+      if (values.isEmpty()) return;
+      
+      int leftM = 50;
+      int rightM = 30;
+      int topM = 20;
+      int bottomM = 40;
+      int plotH = height() - topM - bottomM;
+      int plotW = width() - leftM - rightM;
+      
+      if (plotH <= 10 || plotW <= 10) return;
+      
+      double range = maxV - minV;
+      if (range <= 0.0) range = 1.0;
+      
+      auto toY = [&](double v) -> double {
+        double norm = (v - minV) / range;
+        return topM + plotH - norm * plotH;
+      };
+      
+      double step = double(plotW) / std::max(1, (int)values.size());
+      
+      p.setPen(QColor(230, 230, 230));
+      p.drawRect(leftM, topM, plotW, plotH);
+      
+      if (showBaseline && baselineVal >= minV && baselineVal <= maxV) {
+        double baseLineY = toY(baselineVal);
+        p.setPen(QPen(QColor(180, 180, 180), 1, Qt::DashLine));
+        p.drawLine(leftM, baseLineY, leftM + plotW, baseLineY);
+      }
+      
+      QFont fontSmall("SansSerif", 7);
+      p.setFont(fontSmall);
+      p.setPen(Qt::darkGray);
+      p.drawText(5, toY(maxV) + 4, QString::number(maxV, 'f', 1));
+      p.drawText(5, toY(minV) + 4, QString::number(minV, 'f', 1));
+      if (showBaseline) {
+        p.drawText(5, toY(baselineVal) + 4, QString::number(baselineVal, 'f', 1));
+      }
+      if (!topLabel.isEmpty()) {
+        p.setPen(QColor(100, 100, 100));
+        p.drawText(leftM + 5, topM - 5, topLabel);
+      }
+      if (!bottomLabel.isEmpty()) {
+        p.setPen(QColor(100, 100, 100));
+        p.drawText(leftM + 5, topM + plotH - 5, bottomLabel);
+      }
+      
+      QFont seqFont("Monospace", 8, QFont::Bold);
+      QFont tickFont("SansSerif", 6);
+      double seqY = topM + plotH + 18;
+      double tickY = topM + plotH + 32;
+      
+      for (int i = 0; i < values.size(); ++i) {
+        double x = leftM + (i + 0.5) * step;
+        
+        p.setPen(QColor(210, 210, 210));
+        p.drawLine(x, topM + plotH, x, topM + plotH + 4);
+        
+        if (!sequence.isEmpty() && i < sequence.length()) {
+          p.setFont(seqFont);
+          QChar ch = sequence[i].toUpper();
+          if (ch == 'R' || ch == 'K' || ch == 'D' || ch == 'E' || ch == 'H') {
+            p.setPen(QColor(33, 150, 243));
+          } else if (ch == 'I' || ch == 'V' || ch == 'L' || ch == 'F' || ch == 'W' || ch == 'M' || ch == 'A') {
+            p.setPen(QColor(230, 81, 0));
+          } else {
+            p.setPen(Qt::darkGray);
+          }
+          QRect charRect(x - step / 2, seqY - 12, step, 16);
+          p.drawText(charRect, Qt::AlignCenter, QString(ch));
+        }
+        
+        int pos = i + 1;
+        bool drawNum = (pos == 1) || (step >= 12 && pos % 5 == 0) || (pos % 10 == 0);
+        if (drawNum) {
+          p.setFont(tickFont);
+          p.setPen(Qt::gray);
+          QRect numRect(x - 20, tickY - 10, 40, 12);
+          p.drawText(numRect, Qt::AlignCenter, QString::number(pos));
+        }
+      }
+      
+      QPainterPath path;
+      for (int i = 0; i < values.size(); ++i) {
+        double x = leftM + (i + 0.5) * step;
+        double y = toY(values[i]);
+        if (i == 0) path.moveTo(x, y);
+        else path.lineTo(x, y);
+      }
+      
+      p.setPen(QPen(lineColor, 2));
+      p.drawPath(path);
+      
+      if (step >= 8.0) {
+        p.setBrush(lineColor);
+        for (int i = 0; i < values.size(); ++i) {
+          double x = leftM + (i + 0.5) * step;
+          double y = toY(values[i]);
+          p.drawEllipse(QPointF(x, y), 2.5, 2.5);
+        }
+      }
+    }
+  };
 } // namespace
 
 ContigWidget::ContigWidget(QWidget *parent) : QWidget(parent) {
@@ -125,6 +252,23 @@ ContigWidget::ContigWidget(QWidget *parent) : QWidget(parent) {
   updateLayoutGeometry();
 }
 
+QList<QVoice> ContigWidget::getAvailableVoices() const {
+  if (tts) return tts->availableVoices();
+  return {};
+}
+
+QVoice ContigWidget::getCurrentVoice() const {
+  if (tts) return tts->voice();
+  return QVoice();
+}
+
+void ContigWidget::setVoice(const QVoice &voice) {
+  if (tts) {
+    tts->setVoice(voice);
+    emit voiceChanged(voice);
+  }
+}
+
 void ContigWidget::loadRestrictionEnzymes() {
   restrictionEnzymes.clear();
   QString localPath = QCoreApplication::applicationDirPath() + "/bionetc.txt";
@@ -133,46 +277,61 @@ void ContigWidget::loadRestrictionEnzymes() {
   if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return;
   
   QTextStream in(&file);
-  bool inData = false;
   static const QRegularExpression iisRegex(R"(^([A-Za-z]+)\((-?\d+)/(-?\d+)\)$)");
+  static const QRegularExpression validIupacRegex(R"(^[ACGTURYMKWSBDHVN]+$)", QRegularExpression::CaseInsensitiveOption);
   
   while (!in.atEnd()) {
     QString line = in.readLine().trimmed();
     if (line.isEmpty()) continue;
-    if (!inData) {
-      if (line == ".." || line.startsWith("..")) { inData = true; continue; }
-      if (line.contains(QRegularExpression(R"(^[A-Za-z0-9]+\s+[A-Za-z\^'_]+)"))) inData = true;
-      else continue;
+    
+    // Игнорируем блоки копирайта, заголовков и разделителей
+    if (line.startsWith('#') || line.startsWith("..") || line.startsWith("=-=") ||
+        line.startsWith("REBASE", Qt::CaseInsensitive) ||
+        line.contains("Copyright", Qt::CaseInsensitive) ||
+        line.contains("Rich Roberts", Qt::CaseInsensitive) ||
+        line.contains("http://", Qt::CaseInsensitive)) {
+      continue;
     }
-    if (line.startsWith('#') || line.startsWith("..") || line.startsWith("REBASE")) continue;
     
     QStringList parts = line.split(QRegularExpression(R"(\s+)"), Qt::SkipEmptyParts);
     if (parts.size() < 2) continue;
     
-    QString name = parts[0];
-    QString rawSite = parts[1];
+    // В BIONET название фермента всегда первое, а сайт гидролиза — ВСЕГДА ПОСЛЕДНИЙ токен
+    QString name = parts.first();
+    QString rawSite = parts.last();
+    
+    // Проверяем, что rawSite содержит нуклеотиды IUPAC
+    QString cleanMotif = rawSite;
+    cleanMotif.remove(QRegularExpression(R"([^A-Za-z])"));
+    
+    // Истинные сайты рестрикции имеют длину >= 3 и состоят строго из IUPAC символов
+    if (cleanMotif.length() < 3) continue;
+    if (!validIupacRegex.match(cleanMotif).hasMatch()) continue;
+    
     RestEnzyme enz;
     enz.name = name;
     
     auto match = iisRegex.match(rawSite);
     if (match.hasMatch()) {
       enz.motif = match.captured(1).toUpper();
-      enz.cutIdx = enz.motif.length() + match.captured(2).toInt();
+      int offset = match.captured(2).toInt();
+      enz.cutIdx = enz.motif.length() + offset;
     } else {
-      QString s = rawSite;
-      int bottomCut = s.indexOf('_');
-      s.remove('_');
-      int cut = s.indexOf('^');
-      if (cut == -1) cut = s.indexOf('\'');
+      int cut = rawSite.indexOf('^');
+      if (cut == -1) cut = rawSite.indexOf('\'');
+      if (cut == -1) cut = rawSite.indexOf('_');
       
-      if (cut != -1) { enz.cutIdx = cut; s.remove('^').remove('\''); } 
-      else if (bottomCut != -1) { enz.cutIdx = bottomCut; } 
-      else { enz.cutIdx = s.length() / 2; }
-      
-      s.remove(QRegularExpression(R"([^A-Za-z])"));
-      enz.motif = s.toUpper();
+      if (cut != -1) {
+        enz.cutIdx = cut;
+      } else {
+        enz.cutIdx = cleanMotif.length() / 2;
+      }
+      enz.motif = cleanMotif.toUpper();
     }
-    if (!enz.motif.isEmpty()) restrictionEnzymes.push_back(enz);
+    
+    if (!enz.motif.isEmpty()) {
+      restrictionEnzymes.push_back(enz);
+    }
   }
 }
 
@@ -429,6 +588,7 @@ void ContigWidget::setConsensusIupac(bool enable) {
 
 void ContigWidget::toggleRestrictionSites(bool enable) {
   showRestrictionSites = enable;
+  emit restrictionSitesToggled(showRestrictionSites);
   update();
 }
 
@@ -445,8 +605,9 @@ void ContigWidget::stopReading() {
 }
 
 void ContigWidget::setSpeechRate(double rate) {
-  speechRate = rate;
-  if (tts) tts->setRate(rate);
+  speechRate = std::clamp(rate, -1.0, 1.0);
+  if (tts) tts->setRate(speechRate);
+  emit speechRateChanged(speechRate);
 }
 
 void ContigWidget::openInNcbiBlast() {
@@ -483,58 +644,138 @@ void ContigWidget::showSequenceProperties() {
   
   QDialog dialog(this);
   dialog.setWindowTitle("Sequence & Protein Properties");
-  dialog.resize(550, 450);
+  dialog.resize(800, 650);
   QVBoxLayout *layout = new QVBoxLayout(&dialog);
   QTabWidget *tabs = new QTabWidget();
   
+  // --- Вкладка 1: Нуклеотидные свойства ---
   QWidget *nucTab = new QWidget();
   QVBoxLayout *nl = new QVBoxLayout(nucTab);
   int gcCount = seq.count('G') + seq.count('g') + seq.count('C') + seq.count('c');
-  nl->addWidget(new QLabel(QString("Length: %1 bp\nOverall GC Content: %2%").arg(seq.length()).arg(seq.length() > 0 ? gcCount*100.0/seq.length() : 0, 0, 'f', 1)));
+  int atCount = seq.count('A') + seq.count('a') + seq.count('T') + seq.count('t');
+  double gcPercent = (seq.length() > 0) ? (gcCount * 100.0 / seq.length()) : 0.0;
+  double atPercent = (seq.length() > 0) ? (atCount * 100.0 / seq.length()) : 0.0;
   
-  SimpleGraphWidget *gcGraph = new SimpleGraphWidget(QColor(33, 150, 243));
-  int winGC = std::min(20, (int)seq.length());
-  for (int i = 0; i <= seq.length() - winGC; ++i) {
-    int localGC = 0;
-    for (int j = 0; j < winGC; ++j) {
-      QChar c = seq[i+j].toUpper();
-      if (c == 'G' || c == 'C') localGC++;
-    }
-    gcGraph->values.push_back(double(localGC) / winGC);
-  }
-  nl->addWidget(new QLabel(QString("GC Content Profile (Sliding Window: %1 bp):").arg(winGC)));
-  nl->addWidget(gcGraph);
-  tabs->addTab(nucTab, "Nucleotide Properties");
-  
-  QWidget *protTab = new QWidget();
-  QVBoxLayout *pl = new QVBoxLayout(protTab);
-  QString aaSeq;
-  for (int i = 0; i + 2 < seq.length(); i += 3) {
-    QChar aa = translateCodon(seq.mid(i, 3), translationTable);
-    if (aa != ' ' && aa != '*') aaSeq += aa;
-  }
-  
-  double totalMW = 18.015;
-  for (QChar aa : aaSeq) totalMW += getAAMolecularWeight(aa);
-  
-  pl->addWidget(new QLabel(QString("Translated Length: %1 aa\nMolecular Weight: %2 Da").arg(aaSeq.length()).arg(totalMW, 0, 'f', 2)));
-  
-  SimpleGraphWidget *kdGraph = new SimpleGraphWidget(QColor(233, 30, 99));
-  kdGraph->minV = -4.5; kdGraph->maxV = 4.5;
-  int winKD = std::min(7, (int)aaSeq.length());
-  if (winKD > 0) {
-    for (int i = 0; i <= aaSeq.length() - winKD; ++i) {
-      double sum = 0;
-      for (int j = 0; j < winKD; ++j) sum += getKyteDoolittle(aaSeq[i+j]);
-      kdGraph->values.push_back(sum / winKD);
-    }
-  }
-  pl->addWidget(new QLabel(QString("Kyte-Doolittle Hydrophobicity (Sliding Window: %1 aa):").arg(winKD)));
-  pl->addWidget(kdGraph);
-  tabs->addTab(protTab, "Protein Properties (Frame +1)");
-  
-  layout->addWidget(tabs);
-  dialog.exec();
+  QLabel *lblNucSummary = new QLabel(
+    QString("<b>Length:</b> %1 bp &nbsp;&nbsp;|&nbsp;&nbsp; "
+              "<b>GC Content:</b> %2% &nbsp;&nbsp;|&nbsp;&nbsp; "
+              "<b>AT Content:</b> %3%")
+    .arg(seq.length()).arg(gcPercent, 0, 'f', 1).arg(atPercent, 0, 'f', 1));
+              lblNucSummary->setTextFormat(Qt::RichText);
+              nl->addWidget(lblNucSummary);
+              
+              nl->addWidget(new QLabel("<b>Nucleotide Sequence (with 1-based coordinates):</b>"));
+              QPlainTextEdit *txtNucSeq = new QPlainTextEdit();
+              txtNucSeq->setReadOnly(true);
+              txtNucSeq->setFont(QFont("Monospace", 9));
+              txtNucSeq->setPlainText(formatSequenceWithCoordinates(seq, 60, 10));
+              txtNucSeq->setMaximumHeight(140);
+              nl->addWidget(txtNucSeq);
+              
+              int winGC = std::min(15, (int)seq.length());
+              if (winGC % 2 == 0) winGC++;
+              int halfGC = winGC / 2;
+              QVector<double> gcValues;
+              for (int i = 0; i < seq.length(); ++i) {
+                int start = std::max(0, i - halfGC);
+                int end = std::min((int)seq.length() - 1, i + halfGC);
+                int localGC = 0;
+                for (int j = start; j <= end; ++j) {
+                  QChar c = seq[j].toUpper();
+                  if (c == 'G' || c == 'C' || c == 'S') localGC++;
+                }
+                gcValues.push_back(double(localGC) / (end - start + 1) * 100.0);
+              }
+              
+              nl->addWidget(new QLabel(QString("<b>GC Content Profile</b> (Sliding window: %1 bp, baseline: 50%):").arg(winGC)));
+              
+              QScrollArea *saNuc = new QScrollArea();
+              saNuc->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+              saNuc->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+              saNuc->setFixedHeight(190);
+              
+              SequenceGraphWidget *gcGraph = new SequenceGraphWidget(QColor(33, 150, 243));
+              gcGraph->values = gcValues;
+              gcGraph->sequence = seq;
+              gcGraph->minV = 0.0;
+              gcGraph->maxV = 100.0;
+              gcGraph->baselineVal = 50.0;
+              gcGraph->showBaseline = true;
+              gcGraph->topLabel = "100% GC";
+              gcGraph->bottomLabel = "0% GC";
+              gcGraph->updateDimensions(740);
+              
+              saNuc->setWidget(gcGraph);
+              nl->addWidget(saNuc);
+              tabs->addTab(nucTab, "🧬 Nucleotide Properties");
+              
+              // --- Вкладка 2: Белковые свойства ---
+              QWidget *protTab = new QWidget();
+              QVBoxLayout *pl = new QVBoxLayout(protTab);
+              QString aaSeq;
+              for (int i = 0; i + 2 < seq.length(); i += 3) {
+                QChar aa = translateCodon(seq.mid(i, 3), translationTable);
+                if (aa != ' ' && aa != '*') aaSeq += aa;
+              }
+              
+              double totalMW = 18.015;
+              for (QChar aa : aaSeq) totalMW += getAAMolecularWeight(aa);
+              
+              QLabel *lblProtSummary = new QLabel(
+                QString("<b>Translated Length:</b> %1 aa &nbsp;&nbsp;|&nbsp;&nbsp; "
+                          "<b>Molecular Weight:</b> %2 Da (~%3 kDa)")
+                .arg(aaSeq.length())
+                .arg(totalMW, 0, 'f', 2)
+                .arg(totalMW / 1000.0, 0, 'f', 2));
+                          lblProtSummary->setTextFormat(Qt::RichText);
+                          pl->addWidget(lblProtSummary);
+                          
+                          pl->addWidget(new QLabel("<b>Translated Protein Sequence (Frame +1, with coordinates):</b>"));
+                          QPlainTextEdit *txtProtSeq = new QPlainTextEdit();
+                          txtProtSeq->setReadOnly(true);
+                          txtProtSeq->setFont(QFont("Monospace", 9));
+                          txtProtSeq->setPlainText(formatSequenceWithCoordinates(aaSeq, 50, 10));
+                          txtProtSeq->setMaximumHeight(130);
+                          pl->addWidget(txtProtSeq);
+                          
+                          int winKD = std::min(7, (int)aaSeq.length());
+                          if (winKD % 2 == 0) winKD++;
+                          int halfKD = winKD / 2;
+                          QVector<double> kdValues;
+                          for (int i = 0; i < aaSeq.length(); ++i) {
+                            int start = std::max(0, i - halfKD);
+                            int end = std::min((int)aaSeq.length() - 1, i + halfKD);
+                            double sum = 0.0;
+                            for (int j = start; j <= end; ++j) {
+                              sum += getKyteDoolittle(aaSeq[j]);
+                            }
+                            kdValues.push_back(sum / (end - start + 1));
+                          }
+                          
+                          pl->addWidget(new QLabel(QString("<b>Kyte-Doolittle Hydrophobicity Profile</b> (Window: %1 aa, neutral: 0.0):").arg(winKD)));
+                          
+                          QScrollArea *saProt = new QScrollArea();
+                          saProt->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+                          saProt->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+                          saProt->setFixedHeight(190);
+                          
+                          SequenceGraphWidget *kdGraph = new SequenceGraphWidget(QColor(233, 30, 99));
+                          kdGraph->values = kdValues;
+                          kdGraph->sequence = aaSeq;
+                          kdGraph->minV = -4.5;
+                          kdGraph->maxV = 4.5;
+                          kdGraph->baselineVal = 0.0;
+                          kdGraph->showBaseline = true;
+                          kdGraph->topLabel = "▲ Hydrophobic";
+                          kdGraph->bottomLabel = "▼ Hydrophilic";
+                          kdGraph->updateDimensions(740);
+                          
+                          saProt->setWidget(kdGraph);
+                          pl->addWidget(saProt);
+                          tabs->addTab(protTab, "🧪 Protein Properties (Frame +1)");
+                          
+                          layout->addWidget(tabs);
+                          dialog.exec();
 }
 
 void ContigWidget::exportConsensusGenBank(const QString &filePath) {
@@ -583,6 +824,421 @@ void ContigWidget::exportConsensusGenBank(const QString &filePath) {
     out << "\n";
   }
   out << "//\n";
+}
+
+void ContigWidget::exportConsensusGenBankPrompt() {
+  QString filePath = QFileDialog::getSaveFileName(this, "Export GenBank File", "ChromaZ_Consensus.gbk", "GenBank Files (*.gb *.gbk);;All Files (*)");
+  if (!filePath.isEmpty()) {
+    exportConsensusGenBank(filePath);
+  }
+}
+
+void ContigWidget::showPrintExportDialog() {
+  QDialog dialog(this);
+  dialog.setWindowTitle("Print & Export Alignment Report");
+  dialog.resize(520, 420);
+  QVBoxLayout *layout = new QVBoxLayout(&dialog);
+  
+  // Группа 1: Направление вывода
+  QGroupBox *grpDest = new QGroupBox("Output Target");
+  QVBoxLayout *destLayout = new QVBoxLayout(grpDest);
+  QRadioButton *rbPdf = new QRadioButton("Save as PDF Document (*.pdf)");
+  QRadioButton *rbPrinter = new QRadioButton("Send to System / Physical Printer");
+  rbPdf->setChecked(true);
+  destLayout->addWidget(rbPdf);
+  
+  QHBoxLayout *pdfPathLayout = new QHBoxLayout();
+  QLineEdit *txtPdfPath = new QLineEdit("ChromaZ_Alignment.pdf");
+  QPushButton *btnBrowse = new QPushButton("Browse...");
+  pdfPathLayout->addWidget(txtPdfPath);
+  pdfPathLayout->addWidget(btnBrowse);
+  destLayout->addLayout(pdfPathLayout);
+  destLayout->addWidget(rbPrinter);
+  layout->addWidget(grpDest);
+  
+  connect(btnBrowse, &QPushButton::clicked, &dialog, [this, txtPdfPath]() {
+    QString p = QFileDialog::getSaveFileName(this, "Export PDF Report", txtPdfPath->text(), "PDF Files (*.pdf)");
+    if (!p.isEmpty()) txtPdfPath->setText(p);
+  });
+  connect(rbPdf, &QRadioButton::toggled, txtPdfPath, &QWidget::setEnabled);
+  connect(rbPdf, &QRadioButton::toggled, btnBrowse, &QWidget::setEnabled);
+  
+  // Группа 2: Опции вывода содержимого
+  QGroupBox *grpOpts = new QGroupBox("Included Content");
+  QVBoxLayout *optsLayout = new QVBoxLayout(grpOpts);
+  QCheckBox *cbTraces = new QCheckBox("Print chromatogram peak curves (Traces)");
+  QCheckBox *cbQuality = new QCheckBox("Print Phred quality bars");
+  QCheckBox *cbOrf = new QCheckBox("Print translated amino acid frames (ORF A & B)");
+  QCheckBox *cbRef = new QCheckBox("Include Reference sequence");
+  QCheckBox *cbCons = new QCheckBox("Include Consensus sequence");
+  
+  cbTraces->setChecked(true);
+  cbQuality->setChecked(true);
+  cbOrf->setChecked(showOrfA || showOrfB);
+  cbRef->setChecked(true);
+  cbCons->setChecked(true);
+  
+  optsLayout->addWidget(cbTraces);
+  optsLayout->addWidget(cbQuality);
+  optsLayout->addWidget(cbOrf);
+  optsLayout->addWidget(cbRef);
+  optsLayout->addWidget(cbCons);
+  
+  QHBoxLayout *bpLayout = new QHBoxLayout();
+  bpLayout->addWidget(new QLabel("Bases per line / block:"));
+  QSpinBox *spinBases = new QSpinBox();
+  spinBases->setRange(30, 200);
+  spinBases->setValue(60);
+  bpLayout->addWidget(spinBases);
+  bpLayout->addStretch();
+  optsLayout->addLayout(bpLayout);
+  
+  QHBoxLayout *presetLayout = new QHBoxLayout();
+  QPushButton *btnFull = new QPushButton("Full Report (Traces + ORFs)");
+  QPushButton *btnCompact = new QPushButton("Sequences Only (Compact)");
+  presetLayout->addWidget(btnFull);
+  presetLayout->addWidget(btnCompact);
+  optsLayout->addLayout(presetLayout);
+  
+  layout->addWidget(grpOpts);
+  
+  connect(btnFull, &QPushButton::clicked, [&]() {
+    cbTraces->setChecked(true);
+    cbQuality->setChecked(true);
+    cbOrf->setChecked(true);
+  });
+  connect(btnCompact, &QPushButton::clicked, [&]() {
+    cbTraces->setChecked(false);
+    cbQuality->setChecked(false);
+    cbOrf->setChecked(false);
+  });
+  
+  // Кнопки подтверждения
+  QHBoxLayout *btnBox = new QHBoxLayout();
+  QPushButton *btnOk = new QPushButton("Print / Export");
+  QPushButton *btnCancel = new QPushButton("Cancel");
+  btnOk->setDefault(true);
+  btnBox->addStretch();
+  btnBox->addWidget(btnCancel);
+  btnBox->addWidget(btnOk);
+  layout->addLayout(btnBox);
+  
+  connect(btnCancel, &QPushButton::clicked, &dialog, &QDialog::reject);
+  connect(btnOk, &QPushButton::clicked, &dialog, &QDialog::accept);
+  
+  if (dialog.exec() != QDialog::Accepted) return;
+  
+  PrintExportOptions opt;
+  opt.basesPerLine = spinBases->value();
+  opt.includeTraces = cbTraces->isChecked();
+  opt.includeQuality = cbQuality->isChecked();
+  opt.includeOrfA = cbOrf->isChecked() && showOrfA;
+  opt.includeOrfB = cbOrf->isChecked() && showOrfB;
+  opt.includeRef = cbRef->isChecked();
+  opt.includeConsensus = cbCons->isChecked();
+  
+  if (rbPdf->isChecked()) {
+    opt.outputType = PrintExportOptions::PdfFile;
+    opt.pdfPath = txtPdfPath->text();
+    QPdfWriter writer(opt.pdfPath);
+    writer.setPageSize(QPageSize(QPageSize::A4));
+    writer.setPageOrientation(QPageLayout::Portrait);
+    writer.setResolution(300);
+    renderAlignmentToDevice(&writer, opt);
+    QMessageBox::information(this, "Export Completed", "PDF report successfully generated:\n" + opt.pdfPath);
+  } else {
+    opt.outputType = PrintExportOptions::SystemPrinter;
+    QPrinter printer(QPrinter::HighResolution);
+    QPrintDialog pDialog(&printer, this);
+    if (pDialog.exec() == QDialog::Accepted) {
+      renderAlignmentToDevice(&printer, opt);
+    }
+  }
+}
+
+void ContigWidget::renderAlignmentToDevice(QPagedPaintDevice *device, const PrintExportOptions &opt) {
+  int maxCols = getMaxCols();
+  if (maxCols == 0) return;
+  
+  QPainter painter(device);
+  painter.setRenderHint(QPainter::Antialiasing);
+  
+  int dpi = device->logicalDpiX();
+  if (dpi <= 0) dpi = 300;
+  double s = double(dpi) / 96.0;
+  
+  QFont blockHeaderFont("SansSerif", 9, QFont::Bold);
+  QFont labelFont("SansSerif", 7, QFont::Bold);
+  QFont seqFont("Monospace", 8, QFont::Bold);
+  QFont orfFont("Monospace", 6);
+  QFont coordFont("Monospace", 6);
+  
+  QFontMetrics fmTitle(blockHeaderFont, device);
+  QFontMetrics fmLabel(labelFont, device);
+  QFontMetrics fmSeq(seqFont, device);
+  QFontMetrics fmOrf(orfFont, device);
+  QFontMetrics fmCoord(coordFont, device);
+  
+  int hTitle = fmTitle.lineSpacing() + int(3 * s);
+  int hSeq = fmSeq.lineSpacing() + int(2 * s);
+  int hOrf = fmOrf.lineSpacing() + int(1 * s);
+  int hCoord = fmCoord.lineSpacing() + int(1 * s);
+  int hBar = opt.includeQuality ? int(5 * s) : 0;
+  int hTrace = opt.includeTraces ? int(55 * s) : 0;
+  
+  QRect pageRect = device->pageLayout().paintRectPixels(dpi);
+  int pageLeft = pageRect.left() + int(15 * s);
+  int pageRight = pageRect.right() - int(15 * s);
+  int pageTop = pageRect.top() + int(15 * s);
+  int pageBottom = pageRect.bottom() - int(15 * s);
+  int pageWidth = pageRight - pageLeft;
+  
+  int leftMarginWidth = int(140 * s);
+  int plotWidth = pageWidth - leftMarginWidth;
+  int bpl = std::max(10, opt.basesPerLine);
+  double baseStepX = double(plotWidth) / bpl;
+  
+  int singleTrackH = hCoord + hSeq + (opt.includeQuality ? (hBar + int(2 * s)) : 0) +
+    (opt.includeTraces ? (hTrace + int(4 * s)) : 0) + int(8 * s);
+  
+  int currentY = pageTop;
+  int totalBlocks = (maxCols + bpl - 1) / bpl;
+  
+  auto ensureVerticalSpace = [&](int neededHeight) {
+    if (currentY + neededHeight > pageBottom) {
+      device->newPage();
+      currentY = pageTop;
+    }
+  };
+  
+  for (int b = 0; b < totalBlocks; ++b) {
+    int startCol = b * bpl;
+    int endCol = std::min(maxCols, (b + 1) * bpl);
+    
+    ensureVerticalSpace(hTitle + hSeq * 2 + int(10 * s));
+    
+    // Заголовок блока
+    painter.setFont(blockHeaderFont);
+    painter.setPen(Qt::black);
+    painter.drawText(pageLeft, currentY + fmTitle.ascent(),
+                     QString("Block %1 (Bases %2 - %3)").arg(b + 1).arg(startCol + 1).arg(endCol));
+    currentY += hTitle;
+    
+    // Референс
+    if (opt.includeRef && !referenceSeq.isEmpty()) {
+      ensureVerticalSpace(hCoord + hSeq + (opt.includeOrfA ? 6 * hOrf : 0));
+      
+      painter.setFont(labelFont);
+      painter.setPen(Qt::darkGreen);
+      painter.drawText(pageLeft, currentY + hCoord + fmLabel.ascent(), isAutoReference ? "CONTIG:" : "REF:");
+      
+      painter.setFont(coordFont);
+      painter.setPen(Qt::gray);
+      for (int col = startCol; col < endCol && col < referenceSeq.length(); ++col) {
+        int pos = col + 1;
+        if (pos % 10 == 0 || pos == 1) {
+          double x = pageLeft + leftMarginWidth + (col - startCol) * baseStepX;
+          painter.drawText(x, currentY + fmCoord.ascent(), QString::number(pos));
+        }
+      }
+      currentY += hCoord;
+      
+      painter.setFont(seqFont);
+      for (int col = startCol; col < endCol && col < referenceSeq.length(); ++col) {
+        double x = pageLeft + leftMarginWidth + (col - startCol) * baseStepX;
+        QChar base = referenceSeq[col].toUpper();
+        if (base == 'A') painter.setPen(Qt::green);
+        else if (base == 'C') painter.setPen(Qt::blue);
+        else if (base == 'G') painter.setPen(Qt::black);
+        else if (base == 'T') painter.setPen(Qt::red);
+        else painter.setPen(Qt::gray);
+        painter.drawText(x, currentY + fmSeq.ascent(), QString(base));
+      }
+      currentY += hSeq;
+      
+      if (opt.includeOrfA) {
+        painter.setFont(orfFont);
+        for (int frame = 0; frame < 6; ++frame) {
+          QString orfStr = getOrfLine(frame, referenceSeq);
+          for (int col = startCol; col < endCol && col < orfStr.length(); ++col) {
+            QChar aa = orfStr[col];
+            if (aa != ' ') {
+              double x = pageLeft + leftMarginWidth + (col - startCol) * baseStepX;
+              if (aa == 'M') painter.setPen(Qt::darkGreen);
+              else if (aa == '*') painter.setPen(Qt::red);
+              else if (frame >= 3) painter.setPen(QColor(230, 81, 0));
+              else painter.setPen(Qt::darkBlue);
+              painter.drawText(x, currentY + fmOrf.ascent(), QString(aa));
+            }
+          }
+          currentY += hOrf;
+        }
+      }
+    }
+    
+    // Консенсус
+    if (opt.includeConsensus && !consensusSeq.isEmpty()) {
+      ensureVerticalSpace(hCoord + hSeq + (opt.includeOrfB ? 6 * hOrf : 0));
+      
+      painter.setFont(labelFont);
+      painter.setPen(QColor(156, 39, 176));
+      painter.drawText(pageLeft, currentY + hCoord + fmLabel.ascent(), "CONSENSUS:");
+      
+      painter.setFont(coordFont);
+      painter.setPen(Qt::gray);
+      for (int col = startCol; col < endCol && col < consensusSeq.length(); ++col) {
+        int pos = col + 1;
+        if (pos % 10 == 0 || pos == 1) {
+          double x = pageLeft + leftMarginWidth + (col - startCol) * baseStepX;
+          painter.drawText(x, currentY + fmCoord.ascent(), QString::number(pos));
+        }
+      }
+      currentY += hCoord;
+      
+      painter.setFont(seqFont);
+      for (int col = startCol; col < endCol && col < consensusSeq.length(); ++col) {
+        double x = pageLeft + leftMarginWidth + (col - startCol) * baseStepX;
+        QChar base = consensusSeq[col].toUpper();
+        if (base == 'A') painter.setPen(Qt::green);
+        else if (base == 'C') painter.setPen(Qt::blue);
+        else if (base == 'G') painter.setPen(Qt::black);
+        else if (base == 'T') painter.setPen(Qt::red);
+        else if (base == '-') painter.setPen(Qt::gray);
+        else painter.setPen(QColor(156, 39, 176));
+        painter.drawText(x, currentY + fmSeq.ascent(), QString(base));
+      }
+      currentY += hSeq;
+      
+      if (opt.includeOrfB) {
+        painter.setFont(orfFont);
+        for (int frame = 0; frame < 6; ++frame) {
+          QString orfStr = getOrfLine(frame, consensusSeq);
+          for (int col = startCol; col < endCol && col < orfStr.length(); ++col) {
+            QChar aa = orfStr[col];
+            if (aa != ' ') {
+              double x = pageLeft + leftMarginWidth + (col - startCol) * baseStepX;
+              if (aa == 'M') painter.setPen(Qt::darkGreen);
+              else if (aa == '*') painter.setPen(Qt::red);
+              else if (frame >= 3) painter.setPen(QColor(230, 81, 0));
+              else painter.setPen(Qt::darkBlue);
+              painter.drawText(x, currentY + fmOrf.ascent(), QString(aa));
+            }
+          }
+          currentY += hOrf;
+        }
+      }
+    }
+    
+    currentY += int(6 * s);
+    
+    // Прочтения (Tracks)
+    for (size_t t = 0; t < tracks.size(); ++t) {
+      ensureVerticalSpace(singleTrackH);
+      auto &track = tracks[t];
+      Ab1Data dispData = Ab1Parser::getOrientedData(track.originalData, track.alignment.isReverseComplement);
+      QString readAligned = track.alignment.alignedRead.isEmpty() ? dispData.sequence : track.alignment.alignedRead;
+      
+      painter.setFont(labelFont);
+      painter.setPen(track.inContig ? Qt::darkBlue : Qt::red);
+      QString rcMark = track.alignment.isReverseComplement ? " [RC]" : "";
+      QRect nameRect(pageLeft, currentY, leftMarginWidth - int(8 * s), singleTrackH);
+      painter.drawText(nameRect, Qt::TextWordWrap | Qt::AlignLeft | Qt::AlignTop, track.fileName + rcMark);
+      
+      int rawBaseIdx = 0;
+      for (int col = 0; col < startCol && col < readAligned.length(); ++col) {
+        if (readAligned[col] != '-') rawBaseIdx++;
+      }
+      
+      painter.setFont(coordFont);
+      painter.setPen(Qt::gray);
+      int tempRawIdx = rawBaseIdx;
+      for (int col = startCol; col < endCol && col < readAligned.length(); ++col) {
+        if (readAligned[col] != '-') {
+          tempRawIdx++;
+          if (tempRawIdx % 10 == 0 || tempRawIdx == 1) {
+            double x = pageLeft + leftMarginWidth + (col - startCol) * baseStepX;
+            painter.drawText(x, currentY + fmCoord.ascent(), QString::number(tempRawIdx));
+          }
+        }
+      }
+      currentY += hCoord;
+      
+      painter.setFont(seqFont);
+      for (int col = startCol; col < endCol && col < readAligned.length(); ++col) {
+        double x = pageLeft + leftMarginWidth + (col - startCol) * baseStepX;
+        QChar base = readAligned[col];
+        QChar refC = (col < referenceSeq.length()) ? referenceSeq[col].toUpper() : '?';
+        
+        bool isMismatch = (base != '-' && refC != '?' && refC != '-' && base.toUpper() != refC);
+        if (isMismatch) {
+          painter.fillRect(x - 1, currentY, baseStepX, hSeq, QColor(229, 57, 53));
+          painter.setPen(Qt::white);
+        } else {
+          if (base == 'A') painter.setPen(Qt::green);
+          else if (base == 'C') painter.setPen(Qt::blue);
+          else if (base == 'G') painter.setPen(Qt::black);
+          else if (base == 'T') painter.setPen(Qt::red);
+          else painter.setPen(Qt::gray);
+        }
+        painter.drawText(x, currentY + fmSeq.ascent(), QString(base));
+        
+        if (opt.includeQuality && base != '-' && rawBaseIdx < (int)dispData.qualityScores.size()) {
+          int q = dispData.qualityScores[rawBaseIdx];
+          QColor qCol = (q >= 30) ? QColor(76, 175, 80) : ((q >= 20) ? QColor(255, 193, 7) : QColor(244, 67, 54));
+          painter.fillRect(x, currentY + hSeq + 1, std::max(1.0, baseStepX - 1), hBar, qCol);
+        }
+        if (base != '-') rawBaseIdx++;
+      }
+      currentY += hSeq + (opt.includeQuality ? (hBar + int(2 * s)) : 0);
+      
+      if (opt.includeTraces && !dispData.basePositions.empty()) {
+        struct BasePt { double x; int col; };
+        std::vector<BasePt> pts;
+        for (int col = startCol; col < endCol && col < readAligned.length(); ++col) {
+          if (readAligned[col] != '-') {
+            pts.push_back({pageLeft + leftMarginWidth + (col - startCol) * baseStepX, col});
+          }
+        }
+        
+        int baseline = currentY + hTrace;
+        int maxVal = 1200;
+        double yFactor = (hTrace * 0.85) / maxVal;
+        
+        auto drawPrintTrace = [&](const std::vector<int> &trace, QColor col) {
+          if (trace.empty() || pts.size() < 2) return;
+          QPainterPath path;
+          for (size_t bp = 0; bp + 1 < pts.size() && bp + 1 < dispData.basePositions.size(); ++bp) {
+            int sStart = dispData.basePositions[bp];
+            int sEnd = dispData.basePositions[bp + 1];
+            if (sStart >= (int)trace.size()) continue;
+            sEnd = std::min(sEnd, (int)trace.size() - 1);
+            if (sStart >= sEnd) continue;
+            
+            for (int sample = sStart; sample <= sEnd; ++sample) {
+              double t = double(sample - sStart) / (sEnd - sStart);
+              double xPos = pts[bp].x + t * (pts[bp + 1].x - pts[bp].x);
+              double yPos = baseline - std::min(trace[sample], maxVal) * yFactor;
+              if (bp == 0 && sample == sStart) path.moveTo(xPos, yPos);
+              else path.lineTo(xPos, yPos);
+            }
+          }
+          painter.setPen(QPen(col, std::max(1.0, 1.0 * s)));
+          painter.drawPath(path);
+        };
+        
+        drawPrintTrace(dispData.traceA, Qt::green);
+        drawPrintTrace(dispData.traceC, Qt::blue);
+        drawPrintTrace(dispData.traceG, Qt::black);
+        drawPrintTrace(dispData.traceT, Qt::red);
+        
+        currentY += hTrace + int(4 * s);
+      }
+      
+      currentY += int(8 * s);
+    }
+    
+    currentY += int(15 * s);
+  }
 }
 
 void ContigWidget::applyTrimToTrack(AlignedTrack &tr, int trimLeftCount, int trimRightCount) {
@@ -949,132 +1605,6 @@ void ContigWidget::exportConsensusFasta(const QString &filePath) {
 void ContigWidget::exportViewImage(const QString &filePath) {
   QImage img(size(), QImage::Format_ARGB32); img.fill(Qt::white);
   QPainter p(&img); render(&p); img.save(filePath);
-}
-
-void ContigWidget::renderAlignmentToDevice(QPagedPaintDevice *device, int basesPerLine) {
-  if (basesPerLine <= 0) basesPerLine = 80;
-  int maxCols = getMaxCols();
-  if (maxCols == 0) return;
-  
-  QPainter painter(device);
-  painter.setRenderHint(QPainter::Antialiasing);
-  
-  QRect pageRect = device->pageLayout().paintRectPixels(device->logicalDpiX());
-  int pageWidth = pageRect.width();
-  int pageHeight = pageRect.height();
-  
-  int pdfLeftMargin = 350;
-  double pdfScaleX = double(pageWidth - pdfLeftMargin - 100) / basesPerLine;
-  pdfScaleX = std::max(8.0, pdfScaleX);
-  
-  int pdfTrackHeight = 140;
-  int pdfBlockHeight = 140 + (tracks.size() + 2) * pdfTrackHeight;
-  
-  int currentY = 50;
-  int totalBlocks = (maxCols + basesPerLine - 1) / basesPerLine;
-  
-  QFont seqFont("Monospace", 7, QFont::Bold);
-  QFont labelFont("SansSerif", 8);
-  QFont headerFont("SansSerif", 9, QFont::Bold);
-  
-  for (int b = 0; b < totalBlocks; ++b) {
-    int startCol = b * basesPerLine;
-    int endCol = std::min(maxCols, (b + 1) * basesPerLine);
-    
-    if (currentY + pdfBlockHeight > pageHeight - 50 && currentY > 50) {
-      device->newPage();
-      currentY = 50;
-    }
-    
-    painter.setFont(headerFont);
-    painter.setPen(Qt::black);
-    painter.drawText(50, currentY + 15, QString("Block %1 (Bases %2 - %3)").arg(b + 1).arg(startCol + 1).arg(endCol));
-    currentY += 25;
-    
-    painter.setFont(headerFont);
-    painter.setPen(Qt::darkGreen);
-    painter.drawText(50, currentY + 18, isAutoReference ? "CONTIG:" : "REF:");
-    
-    painter.setFont(seqFont);
-    for (int col = startCol; col < endCol && col < referenceSeq.length(); ++col) {
-      int x = pdfLeftMargin + (col - startCol) * pdfScaleX;
-      QChar base = referenceSeq[col].toUpper();
-      if (base == 'A') painter.setPen(Qt::green); else if (base == 'C') painter.setPen(Qt::blue); else if (base == 'G') painter.setPen(Qt::black); else if (base == 'T') painter.setPen(Qt::red); else painter.setPen(Qt::gray);
-      painter.drawText(x, currentY + 18, QString(base));
-    }
-    currentY += 25;
-    currentY += 80;
-    
-    painter.setFont(headerFont);
-    painter.setPen(QColor(156, 39, 176));
-    painter.drawText(50, currentY + 18, "CONSENSUS:");
-    painter.setFont(seqFont);
-    for (int col = startCol; col < endCol && col < consensusSeq.length(); ++col) {
-      int x = pdfLeftMargin + (col - startCol) * pdfScaleX;
-      QChar base = consensusSeq[col].toUpper();
-      if (base == 'A') painter.setPen(Qt::green); else if (base == 'C') painter.setPen(Qt::blue); else if (base == 'G') painter.setPen(Qt::black); else if (base == 'T') painter.setPen(Qt::red); else if (base == '-') painter.setPen(Qt::gray); else painter.setPen(QColor(156, 39, 176));
-      painter.drawText(x, currentY + 18, QString(base));
-    }
-    currentY += 25;
-    
-    for (size_t t = 0; t < tracks.size(); ++t) {
-      auto &track = tracks[t];
-      int trackY = currentY;
-      Ab1Data dispData = Ab1Parser::getOrientedData(track.originalData, track.alignment.isReverseComplement);
-      
-      painter.setFont(labelFont);
-      painter.setPen(track.inContig ? Qt::darkBlue : Qt::red);
-      QRect nameRect(50, trackY, pdfLeftMargin - 60, pdfTrackHeight - 5);
-      QString rcMark = track.alignment.isReverseComplement ? " [RC]" : "";
-      painter.drawText(nameRect, Qt::TextWordWrap | Qt::TextWrapAnywhere, track.fileName + rcMark);
-      
-      QString readAligned = track.alignment.alignedRead.isEmpty() ? dispData.sequence : track.alignment.alignedRead;
-      
-      int rawBaseIdx = 0;
-      for (int col = 0; col < startCol && col < readAligned.length(); ++col) { if (readAligned[col] != '-') rawBaseIdx++; }
-      
-      painter.setFont(seqFont);
-      for (int col = startCol; col < endCol && col < readAligned.length(); ++col) {
-        int x = pdfLeftMargin + (col - startCol) * pdfScaleX;
-        QChar base = readAligned[col];
-        QChar refC = (col < referenceSeq.length()) ? referenceSeq[col].toUpper() : '?';
-        
-        bool isMismatch = (base != '-' && refC != '?' && refC != '-' && base.toUpper() != refC);
-        if (isMismatch) {
-          painter.fillRect(x - 1, trackY + 5, pdfScaleX, 16, QColor(229, 57, 53));
-          painter.setPen(Qt::white);
-        } else {
-          if (base == 'A') painter.setPen(Qt::green); else if (base == 'C') painter.setPen(Qt::blue); else if (base == 'G') painter.setPen(Qt::black); else if (base == 'T') painter.setPen(Qt::red); else painter.setPen(Qt::gray);
-        }
-        painter.drawText(x, trackY + 18, QString(base));
-        
-        if (base != '-' && rawBaseIdx < (int)dispData.qualityScores.size()) {
-          int q = dispData.qualityScores[rawBaseIdx];
-          QColor qCol = (q >= 30) ? QColor(76, 175, 80) : ((q >= 20) ? QColor(255, 193, 7) : QColor(244, 67, 54));
-          painter.fillRect(x, trackY + 21, pdfScaleX - 1, 4, qCol);
-          rawBaseIdx++;
-        }
-      }
-      currentY += pdfTrackHeight;
-    }
-    currentY += 30;
-  }
-}
-
-void ContigWidget::exportPdf(const QString &filePath, int basesPerLine) {
-  QPdfWriter writer(filePath);
-  writer.setPageSize(QPageSize(QPageSize::A4));
-  writer.setPageOrientation(QPageLayout::Portrait);
-  writer.setResolution(300);
-  renderAlignmentToDevice(&writer, basesPerLine);
-}
-
-void ContigWidget::printDirect() {
-  QPrinter printer(QPrinter::HighResolution);
-  QPrintDialog dialog(&printer, this);
-  if (dialog.exec() == QDialog::Accepted) {
-    renderAlignmentToDevice(&printer, 80);
-  }
 }
 
 void ContigWidget::fitToWindowHeight(int viewportHeight) {
@@ -1712,14 +2242,42 @@ void ContigWidget::contextMenuEvent(QContextMenuEvent *event) {
   QAction *stopReadAct = menu.addAction("🔇 Stop Reading");
   connect(stopReadAct, &QAction::triggered, this, &ContigWidget::stopReading);
   
+  QMenu *voiceMenu = menu.addMenu("🎙 Voice");
+  if (tts) {
+    const auto voices = tts->availableVoices();
+    for (const QVoice &v : voices) {
+      QString label = QString("%1 (%2)").arg(v.name()).arg(QLocale::languageToString(v.locale().language()));
+      QAction *vAct = voiceMenu->addAction(label);
+      vAct->setCheckable(true);
+      if (v.name() == tts->voice().name()) vAct->setChecked(true);
+      connect(vAct, &QAction::triggered, this, [this, v]() { setVoice(v); });
+    }
+  }
+  
   QMenu *speedMenu = menu.addMenu("⏱ Speech Speed");
-  QAction *speed05 = speedMenu->addAction("0.5x"); connect(speed05, &QAction::triggered, this, [this](){ setSpeechRate(-0.5); });
-  QAction *speed10 = speedMenu->addAction("1.0x (Normal)"); connect(speed10, &QAction::triggered, this, [this](){ setSpeechRate(0.0); });
-  QAction *speed15 = speedMenu->addAction("1.5x"); connect(speed15, &QAction::triggered, this, [this](){ setSpeechRate(0.5); });
+  struct SpeedPreset { QString label; double rate; };
+  const std::vector<SpeedPreset> speeds = {
+    {"0.5x (Very Slow)", -0.75},
+    {"0.75x (Slow)", -0.35},
+    {"1.0x (Normal)", 0.0},
+    {"1.25x (Fast)", 0.25},
+    {"1.5x (Faster)", 0.5},
+    {"1.75x (Very Fast)", 0.75},
+    {"2.0x (Double Speed)", 1.0}
+  };
+  for (const auto &sp : speeds) {
+    QAction *spAct = speedMenu->addAction(sp.label);
+    spAct->setCheckable(true);
+    if (std::abs(speechRate - sp.rate) < 0.1) spAct->setChecked(true);
+    connect(spAct, &QAction::triggered, this, [this, r = sp.rate]() { setSpeechRate(r); });
+  }
   
   menu.addSeparator();
-  QAction *printAct = menu.addAction("🖨 Print Alignment / Save as PDF");
-  connect(printAct, &QAction::triggered, this, &ContigWidget::printDirect);
+  QAction *printAct = menu.addAction("🖨 Print & Export PDF Report...");
+  connect(printAct, &QAction::triggered, this, &ContigWidget::showPrintExportDialog);
+  
+  QAction *genBankAct = menu.addAction("📥 Export Annotated GenBank (.gbk)...");
+  connect(genBankAct, &QAction::triggered, this, &ContigWidget::exportConsensusGenBankPrompt);
   
   QAction *resSitesAct = menu.addAction(showRestrictionSites ? "👁 Hide Restriction Sites" : "👁 Show Restriction Sites");
   connect(resSitesAct, &QAction::triggered, this, [this]() { toggleRestrictionSites(!showRestrictionSites); });
