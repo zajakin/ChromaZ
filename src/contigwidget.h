@@ -10,6 +10,7 @@
 #include <QEvent>
 #include <vector>
 #include <QtTextToSpeech/QTextToSpeech>
+#include <QPagedPaintDevice>
 #include "ab1parser.h"
 #include "alignmentengine.h"
 
@@ -108,6 +109,13 @@ public:
   void stopReading();
   void setSpeechRate(double rate);
   
+  // Новые слоты интеграции
+  void openInNcbiBlast();
+  void showMeltingTemperature();
+  void showSequenceProperties();
+  void exportConsensusGenBank(const QString &filePath);
+  void printDirect();
+  
   void jumpNextSNP();
   void jumpPrevSNP();
   void findSequence(const QString &query, bool forward = true);
@@ -150,6 +158,8 @@ private:
   int findFuzzyMatch(const QString& text, const QString& pattern, int maxMismatches);
   void loadRestrictionEnzymes();
   bool matchIupac(QChar seqChar, QChar motifChar) const;
+  QString getSelectedSequence() const;
+  void renderAlignmentToDevice(QPagedPaintDevice *device, int basesPerLine);
   
   QString referenceSeq;
   QString consensusSeq;
