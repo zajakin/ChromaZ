@@ -56,6 +56,7 @@ struct WidgetState {
   bool autoRCEnabled;
   bool showOrfA;
   bool showOrfB;
+  bool isAutoReference = false;
 };
 
 struct RestEnzyme {
@@ -195,6 +196,7 @@ private:
   QString lastSearchQuery;
   
   bool isAutoReference = false;
+  bool suppressUndo = false; // не дублировать состояние отмены при внутренних вызовах runAlignment()
   std::vector<AlignedTrack> tracks;
   
   std::vector<WidgetState> undoStack;

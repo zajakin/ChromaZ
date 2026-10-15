@@ -41,7 +41,9 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QGroupBox>
+#include <QImage>
 #include <map>
+#include <cmath>
 #include <algorithm>
 
 namespace {
@@ -378,6 +380,7 @@ void ContigWidget::pushUndoState() {
   state.autoRCEnabled = autoRCEnabled;
   state.showOrfA = showOrfA;
   state.showOrfB = showOrfB;
+  state.isAutoReference = isAutoReference;
   undoStack.push_back(state);
   if (undoStack.size() > 100) undoStack.erase(undoStack.begin());
   redoStack.clear();
@@ -389,13 +392,13 @@ void ContigWidget::undo() {
   currentState.referenceSeq = referenceSeq; currentState.consensusSeq = consensusSeq;
   currentState.tracks = tracks; currentState.selTrack = selTrack;
   currentState.selStartCol = selStartCol; currentState.selEndCol = selEndCol;
-  currentState.autoRCEnabled = autoRCEnabled; currentState.showOrfA = showOrfA; currentState.showOrfB = showOrfB;
+  currentState.autoRCEnabled = autoRCEnabled; currentState.showOrfA = showOrfA; currentState.showOrfB = showOrfB; currentState.isAutoReference = isAutoReference;
   redoStack.push_back(currentState);
   WidgetState prevState = undoStack.back(); undoStack.pop_back();
   referenceSeq = prevState.referenceSeq; consensusSeq = prevState.consensusSeq;
   tracks = prevState.tracks; selTrack = prevState.selTrack;
   selStartCol = prevState.selStartCol; selEndCol = prevState.selEndCol;
-  autoRCEnabled = prevState.autoRCEnabled; showOrfA = prevState.showOrfA; showOrfB = prevState.showOrfB;
+  autoRCEnabled = prevState.autoRCEnabled; showOrfA = prevState.showOrfA; showOrfB = prevState.showOrfB; isAutoReference = prevState.isAutoReference;
   emit autoRCChanged(autoRCEnabled);
   calculateConsensusAndSNPs(); updateLayoutGeometry(); fitToWindowHeight(); update();
 }
@@ -406,13 +409,13 @@ void ContigWidget::redo() {
   currentState.referenceSeq = referenceSeq; currentState.consensusSeq = consensusSeq;
   currentState.tracks = tracks; currentState.selTrack = selTrack;
   currentState.selStartCol = selStartCol; currentState.selEndCol = selEndCol;
-  currentState.autoRCEnabled = autoRCEnabled; currentState.showOrfA = showOrfA; currentState.showOrfB = showOrfB;
+  currentState.autoRCEnabled = autoRCEnabled; currentState.showOrfA = showOrfA; currentState.showOrfB = showOrfB; currentState.isAutoReference = isAutoReference;
   undoStack.push_back(currentState);
   WidgetState nextState = redoStack.back(); redoStack.pop_back();
   referenceSeq = nextState.referenceSeq; consensusSeq = nextState.consensusSeq;
   tracks = nextState.tracks; selTrack = nextState.selTrack;
   selStartCol = nextState.selStartCol; selEndCol = nextState.selEndCol;
-  autoRCEnabled = nextState.autoRCEnabled; showOrfA = nextState.showOrfA; showOrfB = nextState.showOrfB;
+  autoRCEnabled = nextState.autoRCEnabled; showOrfA = nextState.showOrfA; showOrfB = nextState.showOrfB; isAutoReference = nextState.isAutoReference;
   emit autoRCChanged(autoRCEnabled);
   calculateConsensusAndSNPs(); updateLayoutGeometry(); fitToWindowHeight(); update();
 }
@@ -530,7 +533,7 @@ void ContigWidget::setAutoRC(bool enable) {
   if (autoRCEnabled == enable) return;
   pushUndoState();
   autoRCEnabled = enable;
-  runAlignment();
+  suppressUndo = true; runAlignment(); suppressUndo = false;
 }
 
 void ContigWidget::setShowOrfA(bool enable) {
@@ -1163,6 +1166,7 @@ void ContigWidget::renderAlignmentToDevice(QPagedPaintDevice *device, const Prin
       }
       currentY += hCoord;
       
+      const int blockRawStart = rawBaseIdx; // индекс первого основания блока в исходном риде
       painter.setFont(seqFont);
       for (int col = startCol; col < endCol && col < readAligned.length(); ++col) {
         double x = pageLeft + leftMarginWidth + (col - startCol) * baseStepX;
@@ -1207,9 +1211,10 @@ void ContigWidget::renderAlignmentToDevice(QPagedPaintDevice *device, const Prin
         auto drawPrintTrace = [&](const std::vector<int> &trace, QColor col) {
           if (trace.empty() || pts.size() < 2) return;
           QPainterPath path;
-          for (size_t bp = 0; bp + 1 < pts.size() && bp + 1 < dispData.basePositions.size(); ++bp) {
-            int sStart = dispData.basePositions[bp];
-            int sEnd = dispData.basePositions[bp + 1];
+          bool started = false;
+          for (size_t bp = 0; bp + 1 < pts.size() && size_t(blockRawStart) + bp + 1 < dispData.basePositions.size(); ++bp) {
+            int sStart = dispData.basePositions[blockRawStart + bp];
+            int sEnd = dispData.basePositions[blockRawStart + bp + 1];
             if (sStart >= (int)trace.size()) continue;
             sEnd = std::min(sEnd, (int)trace.size() - 1);
             if (sStart >= sEnd) continue;
@@ -1218,7 +1223,7 @@ void ContigWidget::renderAlignmentToDevice(QPagedPaintDevice *device, const Prin
               double t = double(sample - sStart) / (sEnd - sStart);
               double xPos = pts[bp].x + t * (pts[bp + 1].x - pts[bp].x);
               double yPos = baseline - std::min(trace[sample], maxVal) * yFactor;
-              if (bp == 0 && sample == sStart) path.moveTo(xPos, yPos);
+              if (!started) { path.moveTo(xPos, yPos); started = true; }
               else path.lineTo(xPos, yPos);
             }
           }
@@ -1249,40 +1254,53 @@ void ContigWidget::applyTrimToTrack(AlignedTrack &tr, int trimLeftCount, int tri
   auto &tC = tr.originalData.traceC;
   auto &tG = tr.originalData.traceG;
   auto &tT = tr.originalData.traceT;
-  
+
   int n = seq.length();
   if (n == 0) return;
-  
+
   int start = trimLeftCount;
   int end = n - 1 - trimRightCount;
-  
-  if (start <= end && start < n) {
-    int newLen = end - start + 1;
-    int startSample = (start < (int)ploc.size()) ? ploc[start] : 0;
-    int endSample = (end + 1 < (int)ploc.size()) ? ploc[end + 1] : (!tA.empty() ? (int)tA.size() : 0);
-    
-    seq = seq.mid(start, newLen);
-    
-    if (start < (int)q.size()) {
-      int newQLen = std::min(newLen, (int)q.size() - start);
-      q = std::vector<int>(q.begin() + start, q.begin() + start + newQLen);
-    } else { q.clear(); }
-    
-    if (startSample < endSample && !tA.empty() && endSample <= (int)tA.size()) {
-      tA = std::vector<int>(tA.begin() + startSample, tA.begin() + endSample);
-      tC = std::vector<int>(tC.begin() + startSample, tC.begin() + endSample);
-      tG = std::vector<int>(tG.begin() + startSample, tG.begin() + endSample);
-      tT = std::vector<int>(tT.begin() + startSample, tT.begin() + endSample);
-    }
-    
-    if (start < (int)ploc.size()) {
-      int newPLen = std::min(newLen, (int)ploc.size() - start);
-      ploc = std::vector<int>(ploc.begin() + start, ploc.begin() + start + newPLen);
-      for (auto &p : ploc) { p -= startSample; if (p < 0) p = 0; }
-    } else { ploc.clear(); }
-  } else {
+
+  if (start > end || start >= n) {
     seq.clear(); q.clear(); ploc.clear(); tA.clear(); tC.clear(); tG.clear(); tT.clear();
+    return;
   }
+
+  int newLen = end - start + 1;
+  int traceLen = 0;
+  if (!tA.empty()) traceLen = std::min({(int)tA.size(), (int)tC.size(), (int)tG.size(), (int)tT.size()});
+
+  // Границы среза трассы — на середине между соседними пиками, чтобы не обрезать пик пополам.
+  int startSample = 0, endSample = traceLen;
+  if (traceLen > 0 && !ploc.empty()) {
+    if (start > 0 && start < (int)ploc.size()) startSample = (ploc[start - 1] + ploc[start]) / 2;
+    if (end + 1 < (int)ploc.size()) endSample = (ploc[end] + ploc[end + 1]) / 2;
+    startSample = std::clamp(startSample, 0, traceLen);
+    endSample = std::clamp(endSample, startSample, traceLen);
+  }
+
+  seq = seq.mid(start, newLen);
+
+  if (start < (int)q.size()) {
+    int newQLen = std::min(newLen, (int)q.size() - start);
+    q = std::vector<int>(q.begin() + start, q.begin() + start + newQLen);
+  } else { q.clear(); }
+
+  bool traceSliced = false;
+  if (traceLen > 0 && startSample < endSample) {
+    tA = std::vector<int>(tA.begin() + startSample, tA.begin() + endSample);
+    tC = std::vector<int>(tC.begin() + startSample, tC.begin() + endSample);
+    tG = std::vector<int>(tG.begin() + startSample, tG.begin() + endSample);
+    tT = std::vector<int>(tT.begin() + startSample, tT.begin() + endSample);
+    traceSliced = true;
+  }
+
+  if (start < (int)ploc.size()) {
+    int newPLen = std::min(newLen, (int)ploc.size() - start);
+    ploc = std::vector<int>(ploc.begin() + start, ploc.begin() + start + newPLen);
+    // сдвигаем позиции пиков только если трасса действительно обрезана с начала
+    if (traceSliced) for (auto &p : ploc) { p -= startSample; if (p < 0) p = 0; }
+  } else { ploc.clear(); }
 }
 
 void ContigWidget::trimLowQualityEnds(int minPhred) {
@@ -1290,19 +1308,20 @@ void ContigWidget::trimLowQualityEnds(int minPhred) {
   for (auto &tr : tracks) {
     auto &q = tr.originalData.qualityScores;
     int n = tr.originalData.sequence.length();
-    if (n == 0) continue;
-    
+    if (n == 0 || q.empty()) continue; // нет оценок качества (FASTA/TXT) — нечего обрезать
+
     int start = 0;
     while (start < n && start < (int)q.size() && q[start] < minPhred) start++;
-    
-    int end = std::min(n, (int)q.size()) - 1;
-    while (end >= start && q[end] < minPhred) end--;
-    
+
+    // основания без оценки качества считаем годными, иначе при q.size() < n терялся бы хвост
+    int end = n - 1;
+    while (end >= start && end < (int)q.size() && q[end] < minPhred) end--;
+
     int trimLeft = start;
     int trimRight = n - 1 - end;
     if (trimLeft > 0 || trimRight > 0) applyTrimToTrack(tr, trimLeft, trimRight);
   }
-  runAlignment();
+  suppressUndo = true; runAlignment(); suppressUndo = false;
 }
 
 int ContigWidget::findFuzzyMatch(const QString& text, const QString& pattern, int maxMismatches) {
@@ -1353,7 +1372,7 @@ void ContigWidget::trimVectors() {
       applyTrimToTrack(tr, trimLeft, trimRight);
     }
   }
-  runAlignment();
+  suppressUndo = true; runAlignment(); suppressUndo = false;
 }
 
 bool ContigWidget::saveProject(const QString &filePath) {
@@ -1414,8 +1433,8 @@ bool ContigWidget::saveProject(const QString &filePath) {
   root["tracks"] = tracksArray;
   QFile file(filePath);
   if (!file.open(QIODevice::WriteOnly)) return false;
-  file.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
-  return true;
+  const QByteArray json = QJsonDocument(root).toJson(QJsonDocument::Compact);
+  return file.write(json) == json.size();
 }
 
 bool ContigWidget::loadProject(const QString &filePath) {
@@ -1486,13 +1505,14 @@ void ContigWidget::findSequence(const QString &query, bool forward) {
   if (qClean != lastSearchQuery || searchMatches.empty()) {
     lastSearchQuery = qClean; searchMatches.clear(); currentMatchIdx = -1;
     int qLen = qClean.length(), pos = 0;
-    while ((pos = referenceSeq.toUpper().indexOf(qClean, pos)) != -1) { searchMatches.push_back({SEL_REF, pos, qLen}); pos++; }
+    const QString refU = referenceSeq.toUpper(), consU = consensusSeq.toUpper();
+    while ((pos = refU.indexOf(qClean, pos)) != -1) { searchMatches.push_back({SEL_REF, pos, qLen}); pos++; }
     pos = 0;
-    while ((pos = consensusSeq.toUpper().indexOf(qClean, pos)) != -1) { searchMatches.push_back({SEL_CONSENSUS, pos, qLen}); pos++; }
+    while ((pos = consU.indexOf(qClean, pos)) != -1) { searchMatches.push_back({SEL_CONSENSUS, pos, qLen}); pos++; }
     for (size_t t = 0; t < tracks.size(); ++t) {
       QString read = tracks[t].alignment.alignedRead.isEmpty() ? tracks[t].originalData.sequence : tracks[t].alignment.alignedRead;
-      pos = 0;
-      while ((pos = read.toUpper().indexOf(qClean, pos)) != -1) { searchMatches.push_back({(int)t, pos, qLen}); pos++; }
+      pos = 0; const QString readU = read.toUpper();
+      while ((pos = readU.indexOf(qClean, pos)) != -1) { searchMatches.push_back({(int)t, pos, qLen}); pos++; }
     }
   }
   if (searchMatches.empty()) { currentMatchIdx = -1; selTrack = SEL_NONE; update(); return; }
@@ -1523,7 +1543,7 @@ void ContigWidget::findSequence(const QString &query, bool forward) {
 }
 
 void ContigWidget::calculateConsensusAndSNPs() {
-  consensusSeq.clear(); snpColumns.clear();
+  consensusSeq.clear(); snpColumns.clear(); currentSnpIdx = -1;
   int maxCols = getMaxCols();
   
   for (int col = 0; col < maxCols; ++col) {
@@ -1603,8 +1623,11 @@ void ContigWidget::exportConsensusFasta(const QString &filePath) {
 }
 
 void ContigWidget::exportViewImage(const QString &filePath) {
-  QImage img(size(), QImage::Format_ARGB32); img.fill(Qt::white);
-  QPainter p(&img); render(&p); img.save(filePath);
+  QImage img(size(), QImage::Format_ARGB32);
+  if (img.isNull()) { QMessageBox::warning(this, "Export View PNG", "Image is too large to export. Zoom out and try again."); return; }
+  img.fill(Qt::white);
+  { QPainter p(&img); render(&p); }
+  if (!img.save(filePath)) QMessageBox::warning(this, "Export View PNG", "Failed to save: " + filePath);
 }
 
 void ContigWidget::fitToWindowHeight(int viewportHeight) {
@@ -1646,7 +1669,7 @@ void ContigWidget::clearAll() {
 
 void ContigWidget::runAlignment() {
   if (tracks.empty()) return;
-  CursorGuard cursorGuard; pushUndoState();
+  CursorGuard cursorGuard; if (!suppressUndo) pushUndoState();
   if (isAutoReference) { referenceSeq.clear(); consensusSeq.clear(); isAutoReference = false; for (auto &tr : tracks) { tr.alignment = AlignmentResult(); } }
   
   if (referenceSeq.isEmpty()) {
@@ -1664,7 +1687,7 @@ void ContigWidget::runAlignment() {
         QString cleanRead = tracks[i].originalData.sequence; cleanRead.remove('-');
         AlignmentResult fwd = AlignmentEngine::alignSemiGlobal(seedSeq, cleanRead, currentAlgorithm, AlignmentEngine::RcMode::ForceForward);
         AlignmentResult rev = AlignmentEngine::alignSemiGlobal(seedSeq, Ab1Parser::reverseComplement(cleanRead), currentAlgorithm, AlignmentEngine::RcMode::ForceForward);
-        if (rev.identity > fwd.identity) revCount++; else fwdCount++;
+        if (rev.score > fwd.score) revCount++; else fwdCount++;
       }
       if (revCount > fwdCount) seedSeq = Ab1Parser::reverseComplement(seedSeq);
     } else {
@@ -1680,6 +1703,8 @@ void ContigWidget::runAlignment() {
   
   for (size_t k = 0; k < tracks.size(); ++k) {
     QString cleanQuery = tracks[k].originalData.sequence; cleanQuery.remove('-');
+    alignData[k].refGapInsertions.assign(N + 1, QString());
+    alignData[k].refBaseMatches.assign(N, QChar('-'));
     if (cleanQuery.isEmpty()) continue;
     AlignmentEngine::RcMode mode = AlignmentEngine::RcMode::Auto;
     if (!autoRCEnabled) mode = tracks[k].alignment.isReverseComplement ? AlignmentEngine::RcMode::ForceReverse : AlignmentEngine::RcMode::ForceForward;
@@ -1687,7 +1712,6 @@ void ContigWidget::runAlignment() {
     
     AlignmentResult res = AlignmentEngine::alignSemiGlobal(referenceSeq, cleanQuery, currentAlgorithm, mode);
     alignData[k].isRC = res.isReverseComplement; alignData[k].identity = res.identity; alignData[k].score = res.score;
-    alignData[k].refGapInsertions.resize(N + 1, ""); alignData[k].refBaseMatches.resize(N, '-');
     QString aRef = res.alignedRef; QString aRead = res.alignedRead;
     int len = std::min(aRef.length(), aRead.length());
     int refIdx = 0;
@@ -2200,6 +2224,7 @@ void ContigWidget::copySelectionAsImageToClipboard() {
   int imgHeight = getTrackY(tracks.size()) + 20;
   
   QImage image(imgWidth, imgHeight, QImage::Format_ARGB32);
+  if (image.isNull()) return;
   image.fill(Qt::white);
   
   QPainter imgPainter(&image);
@@ -2257,8 +2282,8 @@ void ContigWidget::contextMenuEvent(QContextMenuEvent *event) {
   QMenu *speedMenu = menu.addMenu("⏱ Speech Speed");
   struct SpeedPreset { QString label; double rate; };
   const std::vector<SpeedPreset> speeds = {
-    {"0.5x (Very Slow)", -0.75},
-    {"0.75x (Slow)", -0.35},
+    {"0.5x (Very Slow)", -1.0},
+    {"0.75x (Slow)", -0.5},
     {"1.0x (Normal)", 0.0},
     {"1.25x (Fast)", 0.25},
     {"1.5x (Faster)", 0.5},
@@ -2291,7 +2316,7 @@ void ContigWidget::contextMenuEvent(QContextMenuEvent *event) {
     QString rcTitle = tracks[t].alignment.isReverseComplement ? "🔄 Revert to Forward Strand" : "🔄 Convert to Reverse Complement";
     QAction *toggleRCAct = menu.addAction(rcTitle);
     connect(toggleRCAct, &QAction::triggered, this, [this, t]() {
-      pushUndoState(); tracks[t].alignment.isReverseComplement = !tracks[t].alignment.isReverseComplement; tracks[t].overrideRC = true; runAlignment();
+      pushUndoState(); tracks[t].alignment.isReverseComplement = !tracks[t].alignment.isReverseComplement; tracks[t].overrideRC = true; suppressUndo = true; runAlignment(); suppressUndo = false;
     });
     QAction *deleteTrackAct = menu.addAction("❌ Delete Track");
     connect(deleteTrackAct, &QAction::triggered, this, [this, t]() {

@@ -15,18 +15,27 @@ set(CMAKE_AUTORCC ON)
 add_compile_definitions(CHROMAZ_VERSION="${APP_VERSION}")
 
 set(BIONET_FILE "${CMAKE_CURRENT_SOURCE_DIR}/bionetc.txt")
-if(NOT EXISTS "${BIONET_FILE}")
+set(BIONET_NEED_DOWNLOAD TRUE)
+if(EXISTS "${BIONET_FILE}")
+    file(SIZE "${BIONET_FILE}" BIONET_SIZE)
+    if(BIONET_SIZE GREATER 0)
+        set(BIONET_NEED_DOWNLOAD FALSE)
+    endif()
+endif()
+if(BIONET_NEED_DOWNLOAD)
     message(STATUS "REBASE database not found locally. Downloading link_bionetc...")
     file(DOWNLOAD
         "https://rebase.neb.com/rebase/link_bionetc"
         "${BIONET_FILE}"
         STATUS download_status
-        TLS_VERIFY OFF
+        TLS_VERIFY ON
     )
     list(GET download_status 0 status_code)
     list(GET download_status 1 error_msg)
     if(NOT status_code EQUAL 0)
-        message(WARNING "Failed to download REBASE database: ${error_msg}. Will build without bundled database.")
+        message(WARNING "Failed to download REBASE database: ${error_msg}. Building with an empty placeholder (restriction sites disabled).")
+        # resources.qrc ссылается на bionetc.txt: без файла rcc упадёт, поэтому создаём пустой.
+        file(WRITE "${BIONET_FILE}" "")
     else()
         message(STATUS "REBASE database downloaded successfully to ${BIONET_FILE}.")
     endif()
@@ -50,7 +59,8 @@ if(CMAKE_CROSSCOMPILING)
     endif()
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Test TextToSpeech PrintSupport)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets TextToSpeech PrintSupport)
+find_package(Qt6 OPTIONAL_COMPONENTS Test)
 
 if(CMAKE_CROSSCOMPILING)
     foreach(qt_target Qt6::Core Qt6::Gui Qt6::Widgets Qt6::TextToSpeech Qt6::PrintSupport)
@@ -89,15 +99,16 @@ endif()
 
 target_link_libraries(ChromaZ PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::TextToSpeech Qt6::PrintSupport)
 
-enable_testing()
-
-add_executable(ChromaZTests
-    tests/test_main.cpp
-    ab1parser.cpp
-    ab1parser.h
-    alignmentengine.cpp
-    alignmentengine.h
-)
-
-target_link_libraries(ChromaZTests PRIVATE Qt6::Core Qt6::Test)
-add_test(NAME CoreLogicTests COMMAND ChromaZTests)
+# Тесты собираются только если есть Qt6::Test и сам файл tests/test_main.cpp
+if(TARGET Qt6::Test AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_main.cpp")
+    enable_testing()
+    add_executable(ChromaZTests
+        tests/test_main.cpp
+        ab1parser.cpp
+        ab1parser.h
+        alignmentengine.cpp
+        alignmentengine.h
+    )
+    target_link_libraries(ChromaZTests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME CoreLogicTests COMMAND ChromaZTests)
+endif()

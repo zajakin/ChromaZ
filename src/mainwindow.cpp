@@ -6,6 +6,10 @@
 #include <QMessageBox>
 #include <QApplication>
 #include <QHBoxLayout>
+#include <QFileInfo>
+#include <QLineEdit>
+#include <QLocale>
+#include <cmath>
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   setWindowTitle("ChromaZ — Sanger Alignment & Contig Editor");
@@ -200,8 +204,8 @@ void MainWindow::createMenus() {
   menuSpeed = speechMenu->addMenu("⏱ Speed Presets");
   struct SpeedPreset { QString label; double rate; };
   const std::vector<SpeedPreset> speeds = {
-      {"0.5x (Very Slow)", -0.75},
-      {"0.75x (Slow)", -0.35},
+      {"0.5x (Very Slow)", -1.0},
+      {"0.75x (Slow)", -0.5},
       {"1.0x (Normal)", 0.0},
       {"1.25x (Fast)", 0.25},
       {"1.5x (Faster)", 0.5},
@@ -304,18 +308,40 @@ void MainWindow::createToolBars() {
 void MainWindow::openFiles() {
   QStringList files = QFileDialog::getOpenFileNames(
       this, "Open Sequencing / Alignment Files", "",
-      "All Supported Files (*.ab1 *.scf *.fasta *.fa *.gb *.gbk *.fastq *.fq *.txt);;AB1 Files (*.ab1);;FASTA (*.fasta *.fa);;All Files (*)");
+      "All Supported Files (*.ab1 *.scf *.fasta *.fa *.gb *.gbk *.fastq *.fq *.txt);;AB1 / SCF (*.ab1 *.scf);;FASTA / GenBank (*.fasta *.fa *.gb *.gbk);;FASTQ (*.fastq *.fq);;Text (*.txt);;All Files (*)");
+  if (files.isEmpty()) return;
+
+  int added = 0;
+  QStringList failed;
+
+  auto addRecords = [&](const QString &file, const std::vector<SequenceRecord> &recs) {
+    if (recs.empty()) { failed << QFileInfo(file).fileName(); return; }
+    for (const auto &r : recs) {
+      QString id = (recs.size() > 1) ? file + " [" + r.name + "]" : file;
+      if (contigWidget->addAb1Track(id, r.data)) ++added;
+    }
+  };
+
   for (const QString &file : files) {
-    if (file.endsWith(".ab1", Qt::CaseInsensitive) || file.endsWith(".scf", Qt::CaseInsensitive)) {
+    auto has = [&](const char *ext) { return file.endsWith(ext, Qt::CaseInsensitive); };
+    if (has(".ab1") || has(".scf")) {
       Ab1Data d = Ab1Parser::parse(file);
-      if (d.isValid) contigWidget->addAb1Track(file, d);
-    } else if (file.endsWith(".fasta", Qt::CaseInsensitive) || file.endsWith(".fa", Qt::CaseInsensitive) ||
-               file.endsWith(".gb", Qt::CaseInsensitive) || file.endsWith(".gbk", Qt::CaseInsensitive)) {
-      auto recs = SequenceFileParser::parseFastaOrGbRecords(file);
-      for (const auto &r : recs) contigWidget->addAb1Track(file + " [" + r.name + "]", r.data);
+      if (d.isValid) { if (contigWidget->addAb1Track(file, d)) ++added; }
+      else failed << QFileInfo(file).fileName() + (d.errorMessage.isEmpty() ? QString() : " (" + d.errorMessage + ")");
+    } else if (has(".fasta") || has(".fa") || has(".gb") || has(".gbk")) {
+      addRecords(file, SequenceFileParser::parseFastaOrGbRecords(file));
+    } else if (has(".fastq") || has(".fq")) {
+      addRecords(file, SequenceFileParser::parseFastq(file));
+    } else if (has(".txt")) {
+      addRecords(file, SequenceFileParser::parseTxt(file));
+    } else {
+      failed << QFileInfo(file).fileName() + " (unsupported format)";
     }
   }
-  contigWidget->runAlignment();
+
+  if (!failed.isEmpty())
+    QMessageBox::warning(this, "Open Files", "Could not load:\n" + failed.join("\n"));
+  if (added > 0) contigWidget->runAlignment();
 }
 
 void MainWindow::openProject() {

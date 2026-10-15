@@ -38,7 +38,7 @@ Pre-compiled standalone installers are available on the [Releases](https://githu
   * **BLAST (Seed & Extend)** — Accelerated $k$-mer search with extension along the optimal diagonal.
   * **Banded DP** — Banded dynamic programming for long reads.
   * **Wavefront Alignment (WFA)** — Stepwise wavefront error-expansion algorithm.
-  * **Internal Progressive Clustal** — Built-in progressive multiple sequence alignment (MSA) without external CLI dependencies.
+  * **Internal Clustal-style** — Built-in affine-gap (Gotoh) pairwise alignment of each read against the contig/reference, merged into a multiple alignment (no external CLI dependencies).
 * **Auto-Contig & Reference Support**: Automatic seed selection based on the most representative read, or custom reference sequence loading (FASTA/GenBank).
 * **Reverse Complement Detection (Auto RC)**: Automatic strand orientation and alignment for complementary reads (`[RC]`) with manual toggle option.
 
@@ -96,7 +96,7 @@ Pre-compiled standalone installers are available on the [Releases](https://githu
 
 ### 📄 Export, Printing & Project Management
 * **Direct Printing & Native Print Dialog**: Print multi-page alignment reports directly to physical or virtual printers via `Qt6::PrintSupport`.
-* **Annotated GenBank (.gbk) Export**: Export consensus sequences with generated `LOCUS`, `FEATURES` (annotated restriction sites and ORF CDS), and formatted `ORIGIN`.
+* **Annotated GenBank (.gbk) Export**: Export consensus sequences with generated `LOCUS`, `FEATURES` (annotated restriction sites), and formatted `ORIGIN`.
 * **Copy Selection as Image**: Copy selected chromatogram segments along with trace peaks directly to the clipboard as PNG graphics.
 * **FASTA Export**: Export generated consensus sequence.
 * **PDF Export**: Multi-page PDF report generation with configurable bases per line.
@@ -123,7 +123,7 @@ Pre-compiled standalone installers are available on the [Releases](https://githu
 
 | Shortcut / Action | Description |
 | :--- | :--- |
-| **Ctrl + O** | Open `.ChromaZ` project |
+| **Ctrl + O** | Open sequencing files (AB1/SCF/FASTA/GenBank/FASTQ/TXT); projects — via *File → Open Project* |
 | **Ctrl + S** | Save `.ChromaZ` project |
 | **Ctrl + Z** | Undo last action |
 | **Ctrl + Y** / **Ctrl + Shift + Z** | Redo action |
