@@ -92,6 +92,7 @@ private:
   QAction *actToggleOrfA = nullptr;
   QAction *actToggleOrfB = nullptr;
   QAction *actToggleRestr = nullptr;
+  QAction *actSelectEnzymes = nullptr;
   QAction *actToggleIupac = nullptr;
   QAction *actToggleAutoRc = nullptr;
   

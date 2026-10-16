@@ -63,6 +63,7 @@ struct RestEnzyme {
   QString name;
   QString motif;
   int cutIdx;
+  bool enabled = true;
 };
 
 struct PrintExportOptions {
@@ -128,6 +129,7 @@ public:
   void trimLowQualityEnds(int minPhred = 20);
   void trimVectors();
   void toggleRestrictionSites(bool enable);
+  void showEnzymeSelectionDialog();
   
   void readSelectionAloud();
   void stopReading();

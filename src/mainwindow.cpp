@@ -109,7 +109,7 @@ void MainWindow::readSettings() {
     if (algoCombo && algo >= 0 && algo < algoCombo->count()) {
       algoCombo->setCurrentIndex(algo);
     }
-    if (algo >= 0 && algo < (int)algoActions.size()) {
+    if (algo >= 0 && algo < static_cast<int>(algoActions.size())) {
       algoActions[algo]->setChecked(true);
     }
   }
@@ -306,6 +306,10 @@ void MainWindow::createActions() {
     writeSettings();
   });
   
+  actSelectEnzymes = new QAction("⚙ Select Enzymes...", this);
+  actSelectEnzymes->setToolTip("Choose which restriction enzymes to show or hide");
+  connect(actSelectEnzymes, &QAction::triggered, contigWidget, &ContigWidget::showEnzymeSelectionDialog);
+  
   actToggleIupac = new QAction("IUPAC Ambiguity", this);
   actToggleIupac->setCheckable(true);
   actToggleIupac->setChecked(false);
@@ -408,6 +412,7 @@ void MainWindow::createMenus() {
   viewMenu->addAction(actToggleOrfA);
   viewMenu->addAction(actToggleOrfB);
   viewMenu->addAction(actToggleRestr);
+  viewMenu->addAction(actSelectEnzymes);
   viewMenu->addAction(actToggleIupac);
   
   QMenu *alignMenu = menuBar()->addMenu("&Alignment");
@@ -418,6 +423,7 @@ void MainWindow::createMenus() {
   alignMenu->addAction(actToggleAutoRc);
   
   QMenu *analysisMenu = menuBar()->addMenu("&Analysis");
+  analysisMenu->addAction(actSelectEnzymes);
   analysisMenu->addAction(actBlast);
   analysisMenu->addAction(actProps);
   analysisMenu->addSeparator();
@@ -477,9 +483,7 @@ void MainWindow::updateVoiceActions() {
 }
 
 void MainWindow::createToolBars() {
-  // -------------------------------------------------------------------------
   // 1. Панель файлов и проекта
-  // -------------------------------------------------------------------------
   QToolBar *fileBar = addToolBar("File & Project");
   fileBar->setObjectName("FileToolBar");
   fileBar->addAction(actOpen);
@@ -487,9 +491,7 @@ void MainWindow::createToolBars() {
   fileBar->addAction(actSaveProj);
   fileBar->addAction(actPrintExport);
   
-  // -------------------------------------------------------------------------
-  // 2. Панель алгоритма выравнивания и параметров сборки
-  // -------------------------------------------------------------------------
+  // 2. Панель выравнивания и параметров сборки
   QToolBar *alignBar = addToolBar("Alignment & Assembly");
   alignBar->setObjectName("AlignToolBar");
   
@@ -512,7 +514,7 @@ void MainWindow::createToolBars() {
   connect(algoCombo, &QComboBox::currentIndexChanged, this, [this](int idx) {
     if (idx < 0) return;
     contigWidget->setAlignmentAlgorithm(idx);
-    if (idx >= 0 && idx < (int)algoActions.size()) {
+    if (idx >= 0 && idx < static_cast<int>(algoActions.size())) {
       algoActions[idx]->setChecked(true);
     }
     writeSettings();
@@ -549,9 +551,7 @@ void MainWindow::createToolBars() {
     writeSettings();
   });
   
-  // -------------------------------------------------------------------------
   // 3. Панель масштабирования и отображения
-  // -------------------------------------------------------------------------
   QToolBar *viewBar = addToolBar("View & Zoom");
   viewBar->setObjectName("ViewToolBar");
   viewBar->addAction(actZoomInY);
@@ -567,9 +567,7 @@ void MainWindow::createToolBars() {
   viewBar->addAction(actToggleRestr);
   viewBar->addAction(actToggleIupac);
   
-  // -------------------------------------------------------------------------
   // 4. Панель редактирования, поиска и SNP
-  // -------------------------------------------------------------------------
   QToolBar *editBar = addToolBar("Edit & Navigation");
   editBar->setObjectName("EditToolBar");
   editBar->addAction(actUndo);
@@ -592,20 +590,17 @@ void MainWindow::createToolBars() {
   editBar->addAction(actPrevSnp);
   editBar->addAction(actNextSnp);
   
-  // -------------------------------------------------------------------------
   // 5. Панель анализа и тримминга
-  // -------------------------------------------------------------------------
   QToolBar *analysisBar = addToolBar("Analysis & Tools");
   analysisBar->setObjectName("AnalysisToolBar");
+  analysisBar->addAction(actSelectEnzymes);
   analysisBar->addAction(actTrimVectors);
   analysisBar->addAction(actTrimQuality);
   analysisBar->addSeparator();
   analysisBar->addAction(actBlast);
   analysisBar->addAction(actProps);
   
-  // -------------------------------------------------------------------------
   // 6. Панель голосовой диктовки
-  // -------------------------------------------------------------------------
   QToolBar *speechBar = addToolBar("Text-to-Speech Controls");
   speechBar->setObjectName("SpeechToolBar");
   speechBar->addAction(actReadAloud);
@@ -728,5 +723,8 @@ void MainWindow::saveProject() {
 void MainWindow::findSequenceDialog() {
   bool ok;
   QString q = QInputDialog::getText(this, "Find Sequence", "Nucleotide query string:", QLineEdit::Normal, "", &ok);
-  if (ok && !q.isEmpty()) contigWidget->findSequence(q, true);
+  if (ok && !q.isEmpty()) {
+    if (searchEdit) searchEdit->setText(q);
+    contigWidget->findSequence(q, true);
+  }
 }
