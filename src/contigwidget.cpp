@@ -362,7 +362,7 @@ QString ContigWidget::getSelectedSequence() const {
     tracks[selTrack].originalData.sequence : tracks[selTrack].alignment.alignedRead;
     seq = full.mid(minC, len);
   }
-  return seq.remove('-');
+  return seq.remove('-').remove(' ');
 }
 
 void ContigWidget::pushUndoState() {
@@ -417,7 +417,7 @@ void ContigWidget::redo() {
 }
 
 QChar ContigWidget::translateCodon(const QString& codon, int tableIndex) const {
-  if (codon.length() != 3 || codon.contains('-') || codon.contains('N')) return ' ';
+  if (codon.length() != 3 || codon.contains('-') || codon.contains('N') || codon.contains(' ')) return ' ';
   QString c = codon.toUpper();
   if (c=="TTT" || c=="TTC") return 'F';
   if (c=="TTA" || c=="TTG" || c=="CTT" || c=="CTC" || c=="CTA" || c=="CTG") return 'L';
@@ -454,7 +454,7 @@ QString ContigWidget::getOrfLine(int frame, const QString &targetSeq) const {
   std::vector<int> seqMap;
   QString ungapped = "";
   for (int col = 0; col < workingSeq.length(); ++col) {
-    if (workingSeq[col] != '-') {
+    if (workingSeq[col] != '-' && workingSeq[col] != ' ') {
       ungapped += workingSeq[col];
       seqMap.push_back(col);
     }
@@ -1153,7 +1153,7 @@ void ContigWidget::renderAlignmentToDevice(QPagedPaintDevice *device, const Prin
         QChar base = readAligned[col];
         QChar refC = (col < referenceSeq.length()) ? referenceSeq[col].toUpper() : '?';
         
-        bool isMismatch = (base != '-' && refC != '?' && refC != '-' && base.toUpper() != refC);
+        bool isMismatch = (base != '-' && base != ' ' && refC != '?' && refC != '-' && base.toUpper() != refC);
         if (isMismatch) {
           painter.fillRect(x - 1, currentY, baseStepX, hSeq, QColor(229, 57, 53));
           painter.setPen(Qt::white);
@@ -1164,7 +1164,9 @@ void ContigWidget::renderAlignmentToDevice(QPagedPaintDevice *device, const Prin
           else if (base == 'T') painter.setPen(Qt::red);
           else painter.setPen(Qt::gray);
         }
-        painter.drawText(x, currentY + fmSeq.ascent(), QString(base));
+        if (base != ' ') {
+          painter.drawText(x, currentY + fmSeq.ascent(), QString(base));
+        }
         
         if (opt.includeQuality && base != '-' && rawBaseIdx < (int)dispData.qualityScores.size()) {
           int q = dispData.qualityScores[rawBaseIdx];
@@ -1532,7 +1534,7 @@ void ContigWidget::calculateConsensusAndSNPs() {
       QString read = tr.alignment.alignedRead.isEmpty() ? tr.originalData.sequence : tr.alignment.alignedRead;
       if (col < read.length()) {
         QChar b = read[col].toUpper();
-        if (b != '-' && b != 'N') {
+        if (b != '-' && b != 'N' && b != ' ') {
           active++;
           if (b == 'A') countA++; else if (b == 'C') countC++; else if (b == 'G') countG++; else if (b == 'T') countT++;
           baseFreq[b]++;
@@ -1570,10 +1572,17 @@ void ContigWidget::jumpNextSNP() {
   if (snpColumns.empty()) return;
   currentSnpIdx = (currentSnpIdx + 1) % snpColumns.size();
   int col = snpColumns[currentSnpIdx];
+  selTrack = SEL_CONSENSUS;
+  selStartCol = col;
+  selEndCol = col;
+  
   const QWidget *w = this;
   while (w) {
     const QScrollArea *sa = qobject_cast<const QScrollArea*>(w);
-    if (sa && sa->horizontalScrollBar()) { sa->horizontalScrollBar()->setValue(leftMarginWidth + col * scaleX - sa->viewport()->width() / 2); break; }
+    if (sa && sa->horizontalScrollBar()) {
+      sa->horizontalScrollBar()->setValue(leftMarginWidth + col * scaleX - sa->viewport()->width() / 2);
+      break;
+    }
     w = w->parentWidget();
   }
   update();
@@ -1583,10 +1592,17 @@ void ContigWidget::jumpPrevSNP() {
   if (snpColumns.empty()) return;
   currentSnpIdx = (currentSnpIdx - 1 + snpColumns.size()) % snpColumns.size();
   int col = snpColumns[currentSnpIdx];
+  selTrack = SEL_CONSENSUS;
+  selStartCol = col;
+  selEndCol = col;
+  
   const QWidget *w = this;
   while (w) {
     const QScrollArea *sa = qobject_cast<const QScrollArea*>(w);
-    if (sa && sa->horizontalScrollBar()) { sa->horizontalScrollBar()->setValue(leftMarginWidth + col * scaleX - sa->viewport()->width() / 2); break; }
+    if (sa && sa->horizontalScrollBar()) {
+      sa->horizontalScrollBar()->setValue(leftMarginWidth + col * scaleX - sa->viewport()->width() / 2);
+      break;
+    }
     w = w->parentWidget();
   }
   update();
@@ -1652,16 +1668,16 @@ void ContigWidget::runAlignment() {
   if (referenceSeq.isEmpty()) {
     size_t maxLen = 0; int bestIdx = 0;
     for (size_t i = 0; i < tracks.size(); ++i) {
-      QString cleanSeq = tracks[i].originalData.sequence; cleanSeq.remove('-');
+      QString cleanSeq = tracks[i].originalData.sequence; cleanSeq.remove('-').remove(' ');
       if (cleanSeq.length() > maxLen) { maxLen = cleanSeq.length(); bestIdx = i; }
     }
     if (maxLen == 0) return;
-    QString seedSeq = tracks[bestIdx].originalData.sequence; seedSeq.remove('-');
+    QString seedSeq = tracks[bestIdx].originalData.sequence; seedSeq.remove('-').remove(' ');
     if (autoRCEnabled) {
       int fwdCount = 0, revCount = 0;
       for (size_t i = 0; i < tracks.size(); ++i) {
         if ((int)i == bestIdx || tracks[i].originalData.sequence.isEmpty()) continue;
-        QString cleanRead = tracks[i].originalData.sequence; cleanRead.remove('-');
+        QString cleanRead = tracks[i].originalData.sequence; cleanRead.remove('-').remove(' ');
         AlignmentResult fwd = AlignmentEngine::alignSemiGlobal(seedSeq, cleanRead, currentAlgorithm, AlignmentEngine::RcMode::ForceForward);
         AlignmentResult rev = AlignmentEngine::alignSemiGlobal(seedSeq, Ab1Parser::reverseComplement(cleanRead), currentAlgorithm, AlignmentEngine::RcMode::ForceForward);
         if (rev.score > fwd.score) revCount++; else fwdCount++;
@@ -1671,7 +1687,7 @@ void ContigWidget::runAlignment() {
       if (tracks[bestIdx].alignment.isReverseComplement) seedSeq = Ab1Parser::reverseComplement(seedSeq);
     }
     referenceSeq = seedSeq; isAutoReference = true;
-  } else { referenceSeq.remove('-'); }
+  } else { referenceSeq.remove('-').remove(' '); }
   
   if (referenceSeq.isEmpty()) return;
   int N = referenceSeq.length();
@@ -1679,7 +1695,7 @@ void ContigWidget::runAlignment() {
   std::vector<TrackAlignData> alignData(tracks.size());
   
   for (size_t k = 0; k < tracks.size(); ++k) {
-    QString cleanQuery = tracks[k].originalData.sequence; cleanQuery.remove('-');
+    QString cleanQuery = tracks[k].originalData.sequence; cleanQuery.remove('-').remove(' ');
     alignData[k].refGapInsertions.assign(N + 1, QString());
     alignData[k].refBaseMatches.assign(N, QChar('-'));
     if (cleanQuery.isEmpty()) continue;
@@ -1801,7 +1817,7 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
     painter.setPen(col);
     int rawBaseCounter = 0;
     for (int colIdx = 0; colIdx < seq.length(); ++colIdx) {
-      if (seq[colIdx] != '-') {
+      if (seq[colIdx] != '-' && seq[colIdx] != ' ') {
         rawBaseCounter++;
         if (rawBaseCounter % 10 == 0 || rawBaseCounter == 1) {
           int x = leftMarginWidth + colIdx * scaleX;
@@ -1817,30 +1833,51 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
     if (!tracks[t].inContig) continue;
     QString read = tracks[t].alignment.alignedRead.isEmpty() ? tracks[t].originalData.sequence : tracks[t].alignment.alignedRead;
     for (int i = 0; i < read.length(); ++i) {
-      if (read[i] != '-') { if (ranges[t].first == -1) ranges[t].first = i; ranges[t].last = i; }
+      if (read[i] != '-' && read[i] != ' ') { if (ranges[t].first == -1) ranges[t].first = i; ranges[t].last = i; }
     }
   }
   
   int refFirst = -1, refLast = -1;
-  for (int i = 0; i < referenceSeq.length(); ++i) { if (referenceSeq[i] != '-') { if (refFirst == -1) refFirst = i; refLast = i; } }
+  for (int i = 0; i < referenceSeq.length(); ++i) { if (referenceSeq[i] != '-' && referenceSeq[i] != ' ') { if (refFirst == -1) refFirst = i; refLast = i; } }
   
   int totalHeaderH = calculateHeaderHeight();
   for (int col = 0; col < maxCols; ++col) {
     int x = leftMarginWidth + col * scaleX;
     QChar targetBase = '?'; bool colIsMatch = true; int activeCount = 0;
     bool isSnp = std::find(snpColumns.begin(), snpColumns.end(), col) != snpColumns.end();
-    if (refFirst != -1 && col >= refFirst && col <= refLast) { QChar c = referenceSeq[col].toUpper(); if (c != '-') { targetBase = c; activeCount++; } }
+    if (refFirst != -1 && col >= refFirst && col <= refLast) { QChar c = referenceSeq[col].toUpper(); if (c != '-' && c != ' ') { targetBase = c; activeCount++; } }
     for (size_t t = 0; t < tracks.size(); ++t) {
       if (!tracks[t].inContig) continue;
       if (ranges[t].first != -1 && col >= ranges[t].first && col <= ranges[t].last) {
         QString read = tracks[t].alignment.alignedRead.isEmpty() ? tracks[t].originalData.sequence : tracks[t].alignment.alignedRead;
         QChar c = read[col].toUpper();
-        if (c == '-') { colIsMatch = false; break; }
+        if (c == '-' || c == ' ') { colIsMatch = false; break; }
         if (targetBase == '?') { targetBase = c; activeCount++; } else if (c != targetBase) { colIsMatch = false; break; } else { activeCount++; }
       }
     }
-    if (isSnp) painter.fillRect(x, 0, scaleX, totalHeaderH, QColor(255, 204, 188, 180));
-    else if (colIsMatch && activeCount >= 2 && targetBase != '?') painter.fillRect(x, 0, scaleX, totalHeaderH, QColor(255, 245, 157, 180));
+    if (isSnp) {
+      bool isActiveSnp = (currentSnpIdx >= 0 && currentSnpIdx < (int)snpColumns.size() && snpColumns[currentSnpIdx] == col);
+      if (isActiveSnp) {
+        painter.fillRect(x, 0, scaleX, height(), QColor(255, 87, 34, 40));
+        painter.fillRect(x, 0, scaleX, totalHeaderH, QColor(255, 138, 101, 230));
+        painter.setPen(QPen(QColor(216, 27, 96), 2));
+        painter.drawRect(x, 0, scaleX, totalHeaderH);
+      } else {
+        painter.fillRect(x, 0, scaleX, totalHeaderH, QColor(255, 204, 188, 180));
+      }
+    } else if (colIsMatch && activeCount >= 2 && targetBase != '?') {
+      painter.fillRect(x, 0, scaleX, totalHeaderH, QColor(255, 245, 157, 180));
+    }
+  }
+  
+  // Вертикальная направляющая линия при наведении мыши (Guideline)
+  if (hoverCol >= 0 && hoverCol < maxCols) {
+    int hx = leftMarginWidth + hoverCol * scaleX;
+    painter.save();
+    painter.fillRect(hx, 0, scaleX, height(), QColor(33, 150, 243, 20));
+    painter.setPen(QPen(QColor(33, 150, 243, 160), 1, Qt::DashLine));
+    painter.drawLine(hx + scaleX / 2.0, 0, hx + scaleX / 2.0, height());
+    painter.restore();
   }
   
   if (selTrack != SEL_NONE && selStartCol >= 0 && selEndCol >= 0) {
@@ -1872,7 +1909,7 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
   for (int i = 0; i < referenceSeq.length(); ++i) {
     int x = leftMarginWidth + i * scaleX; QChar base = referenceSeq[i].toUpper();
     if (base == 'A') painter.setPen(Qt::green); else if (base == 'C') painter.setPen(Qt::blue); else if (base == 'G') painter.setPen(Qt::black); else if (base == 'T') painter.setPen(Qt::red); else painter.setPen(Qt::gray);
-    painter.drawText(x, startY, QString(base));
+    if (base != ' ') painter.drawText(x, startY, QString(base));
   }
   curY += 30;
   
@@ -1898,7 +1935,7 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
   if (showRestrictionSites && !consensusSeq.isEmpty() && !restrictionEnzymes.empty()) {
     QString ungapped; std::vector<int> colMap;
     for (int i = 0; i < consensusSeq.length(); ++i) {
-      if (consensusSeq[i] != '-') {
+      if (consensusSeq[i] != '-' && consensusSeq[i] != ' ') {
         ungapped += consensusSeq[i].toUpper();
         colMap.push_back(i);
       }
@@ -1945,7 +1982,7 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
   for (int i = 0; i < consensusSeq.length(); ++i) {
     int x = leftMarginWidth + i * scaleX; QChar base = consensusSeq[i].toUpper();
     if (base == 'A') painter.setPen(Qt::green); else if (base == 'C') painter.setPen(Qt::blue); else if (base == 'G') painter.setPen(Qt::black); else if (base == 'T') painter.setPen(Qt::red); else if (base == '-') painter.setPen(Qt::gray); else painter.setPen(QColor(156, 39, 176));
-    painter.drawText(x, startY, QString(base));
+    if (base != ' ') painter.drawText(x, startY, QString(base));
   }
   curY += 30;
   
@@ -1984,19 +2021,25 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
     
     struct BasePoint { double x; int col; };
     std::vector<BasePoint> basePoints;
-    for (int col = 0; col < readAligned.length(); ++col) { if (readAligned[col] != '-') { basePoints.push_back({leftMarginWidth + col * scaleX, col}); } }
+    for (int col = 0; col < readAligned.length(); ++col) {
+      if (readAligned[col] != '-') {
+        basePoints.push_back({leftMarginWidth + col * scaleX, col});
+      }
+    }
     
     int rawBaseIdx = 0;
     for (int col = 0; col < readAligned.length(); ++col) {
       int x = leftMarginWidth + col * scaleX; QChar base = readAligned[col];
       QChar refC = (col < referenceSeq.length()) ? referenceSeq[col].toUpper() : '?';
-      bool isMismatchLetter = (base != '-' && refC != '?' && refC != '-' && base.toUpper() != refC);
+      bool isMismatchLetter = (base != '-' && base != ' ' && refC != '?' && refC != '-' && refC != ' ' && base.toUpper() != refC);
       
       if (isMismatchLetter) { painter.fillRect(x - 1, currentY + 7, scaleX, 15, QColor(229, 57, 53)); painter.setPen(Qt::white); } 
       else {
         if (base == 'A') painter.setPen(Qt::green); else if (base == 'C') painter.setPen(Qt::blue); else if (base == 'G') painter.setPen(Qt::black); else if (base == 'T') painter.setPen(Qt::red); else painter.setPen(Qt::gray);
       }
-      painter.drawText(x, currentY + 20, QString(base));
+      if (base != ' ') {
+        painter.drawText(x, currentY + 20, QString(base));
+      }
       
       if (base != '-' && rawBaseIdx < (int)dispData.qualityScores.size()) {
         int q = dispData.qualityScores[rawBaseIdx];
@@ -2154,33 +2197,48 @@ void ContigWidget::keyPressEvent(QKeyEvent *event) {
   
   if (selTrack >= 0 && selTrack < (int)tracks.size()) {
     auto &track = tracks[selTrack]; auto &read = track.alignment.alignedRead; auto &origSeq = track.originalData.sequence;
-    auto &qScores = track.originalData.qualityScores; auto &bPos = track.originalData.basePositions; bool isRC = track.alignment.isReverseComplement;
+    bool isRC = track.alignment.isReverseComplement;
     if (event->key() == Qt::Key_Left) { selStartCol = std::max(0, selStartCol - 1); selEndCol = selStartCol; update(); return; } 
     else if (event->key() == Qt::Key_Right) { selStartCol++; selEndCol = selStartCol; update(); return; }
     if (col >= read.length()) return;
+    
     int rawIdx = 0; for (int i = 0; i < col && i < read.length(); ++i) { if (read[i] != '-') rawIdx++; }
+    
     if (!text.isEmpty() && (text == "A" || text == "C" || text == "G" || text == "T" || text == "N" || text == "-")) {
-      pushUndoState(); QChar newChar = text[0], oldChar = read[col]; read[col] = newChar;
+      pushUndoState();
+      QChar newChar = text[0];
+      QChar oldChar = read[col];
       QChar origNewChar = isRC ? Ab1Parser::reverseComplement(QString(newChar))[0] : newChar;
-      if (oldChar != '-' && newChar != '-') { int origIdx = isRC ? ((int)origSeq.length() - 1 - rawIdx) : rawIdx; if (origIdx >= 0 && origIdx < origSeq.length()) origSeq[origIdx] = origNewChar; } 
-      else if (oldChar == '-' && newChar != '-') {
-        int origIdx = isRC ? ((int)origSeq.length() - rawIdx) : rawIdx; if (origIdx >= 0 && origIdx <= origSeq.length()) origSeq.insert(origIdx, origNewChar);
-        int qIdx = isRC ? ((int)qScores.size() - rawIdx) : rawIdx; if (qIdx >= 0 && qIdx <= (int)qScores.size()) qScores.insert(qScores.begin() + qIdx, 30);
-        int pIdx = isRC ? ((int)bPos.size() - rawIdx) : rawIdx; if (pIdx >= 0 && pIdx <= (int)bPos.size()) { int posVal = (pIdx > 0 && pIdx - 1 < (int)bPos.size()) ? bPos[pIdx - 1] + 10 : 10; bPos.insert(bPos.begin() + pIdx, posVal); }
-      } else if (oldChar != '-' && newChar == '-') {
-        int origIdx = isRC ? ((int)origSeq.length() - 1 - rawIdx) : rawIdx; if (origIdx >= 0 && origIdx < origSeq.length()) origSeq.remove(origIdx, 1);
-        int qIdx = isRC ? ((int)qScores.size() - 1 - rawIdx) : rawIdx; if (qIdx >= 0 && qIdx < (int)qScores.size()) qScores.erase(qScores.begin() + qIdx);
-        int pIdx = isRC ? ((int)bPos.size() - 1 - rawIdx) : rawIdx; if (pIdx >= 0 && pIdx < (int)bPos.size()) bPos.erase(bPos.begin() + pIdx);
+      
+      if (newChar == '-') {
+        // Замена на гэп/неразмеченную позицию: сохраняем физический пик и качество
+        read[col] = ' ';
+        int origIdx = isRC ? ((int)origSeq.length() - 1 - rawIdx) : rawIdx;
+        if (origIdx >= 0 && origIdx < origSeq.length()) {
+          origSeq[origIdx] = ' ';
+        }
+      } else {
+        read[col] = newChar;
+        int origIdx = isRC ? ((int)origSeq.length() - 1 - rawIdx) : rawIdx;
+        if (origIdx >= 0 && origIdx < origSeq.length()) {
+          origSeq[origIdx] = origNewChar;
+        }
       }
       calculateConsensusAndSNPs(); updateLayoutGeometry(); update();
     } else if (event->key() == Qt::Key_Backspace || event->key() == Qt::Key_Delete) {
-      pushUndoState(); QChar oldChar = read[col];
-      if (oldChar != '-') {
-        read[col] = '-';
-        int origIdx = isRC ? ((int)origSeq.length() - 1 - rawIdx) : rawIdx; if (origIdx >= 0 && origIdx < origSeq.length()) origSeq.remove(origIdx, 1);
-        int qIdx = isRC ? ((int)qScores.size() - 1 - rawIdx) : rawIdx; if (qIdx >= 0 && qIdx < (int)qScores.size()) qScores.erase(qScores.begin() + qIdx);
-        int pIdx = isRC ? ((int)bPos.size() - 1 - rawIdx) : rawIdx; if (pIdx >= 0 && pIdx < (int)bPos.size()) bPos.erase(bPos.begin() + pIdx);
-      } else { read.remove(col, 1); }
+      pushUndoState();
+      QChar oldChar = read[col];
+      if (oldChar != '-' && oldChar != ' ') {
+        // Удаление нуклеотида в середине: стираем букву, но сохраняем пики трассы и шкалу качества!
+        read[col] = ' ';
+        int origIdx = isRC ? ((int)origSeq.length() - 1 - rawIdx) : rawIdx;
+        if (origIdx >= 0 && origIdx < origSeq.length()) {
+          origSeq[origIdx] = ' ';
+        }
+      } else {
+        // Если это уже выравнивающий гэп, удаляем его колонку
+        read.remove(col, 1);
+      }
       calculateConsensusAndSNPs(); updateLayoutGeometry(); update();
     }
   }
@@ -2212,7 +2270,7 @@ void ContigWidget::copySelectedToClipboard() {
     tracks[selTrack].alignment.alignedRead;
     seq = full.mid(minC, len);
   }
-  if (!seq.isEmpty()) QGuiApplication::clipboard()->setText(seq);
+  if (!seq.isEmpty()) QGuiApplication::clipboard()->setText(seq.remove(' '));
 }
 
 void ContigWidget::copySelectionAsImageToClipboard() {

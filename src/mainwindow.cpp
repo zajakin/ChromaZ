@@ -8,6 +8,7 @@
 #include <QHBoxLayout>
 #include <QFileInfo>
 #include <QLineEdit>
+#include <QPushButton>
 #include <QLocale>
 #include <QSettings>
 #include <cmath>
@@ -18,7 +19,7 @@
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   setWindowTitle("ChromaZ — Sanger Alignment & Contig Editor");
-  resize(1380, 850);
+  resize(1400, 850);
   
   contigWidget = new ContigWidget(this);
   scrollArea = new QScrollArea(this);
@@ -217,14 +218,32 @@ void MainWindow::createActions() {
   actFind->setShortcut(QKeySequence::Find);
   connect(actFind, &QAction::triggered, this, &MainWindow::findSequenceDialog);
   
-  actNextSnp = new QAction("▶ Next SNP", this);
+  actFindPrev = new QAction("◀ Find", this);
+  actFindPrev->setToolTip("Find previous occurrence");
+  connect(actFindPrev, &QAction::triggered, this, [this]() {
+    if (searchEdit && !searchEdit->text().isEmpty()) {
+      contigWidget->findSequence(searchEdit->text(), false);
+    }
+  });
+  
+  actFindNext = new QAction("Find ▶", this);
+  actFindNext->setToolTip("Find next occurrence");
+  connect(actFindNext, &QAction::triggered, this, [this]() {
+    if (searchEdit && !searchEdit->text().isEmpty()) {
+      contigWidget->findSequence(searchEdit->text(), true);
+    }
+  });
+  
+  actNextSnp = new QAction("SNP ▶", this);
+  actNextSnp->setToolTip("Jump to next Single Nucleotide Polymorphism");
   connect(actNextSnp, &QAction::triggered, contigWidget, &ContigWidget::jumpNextSNP);
   
-  actPrevSnp = new QAction("◀ Prev SNP", this);
+  actPrevSnp = new QAction("◀ SNP", this);
+  actPrevSnp->setToolTip("Jump to previous Single Nucleotide Polymorphism");
   connect(actPrevSnp, &QAction::triggered, contigWidget, &ContigWidget::jumpPrevSNP);
   
   actTrimQuality = new QAction("✂ Trim Low Quality...", this);
-  actTrimQuality->setToolTip("Trim ends based on Phred Quality score");
+  actTrimQuality->setToolTip("Trim read ends based on Phred Quality score");
   connect(actTrimQuality, &QAction::triggered, this, [this]() {
     bool ok;
     int q = QInputDialog::getInt(this, "Quality Trimming", "Minimum Phred Quality score:", 20, 5, 50, 1, &ok);
@@ -235,24 +254,32 @@ void MainWindow::createActions() {
   actTrimVectors->setToolTip("Trim vector backbones and adapters (UniVec)");
   connect(actTrimVectors, &QAction::triggered, contigWidget, &ContigWidget::trimVectors);
   
-  actZoomInX = new QAction("🔍+ Bases (X)", this);
-  actZoomInX->setToolTip("Increase base width spacing");
+  actZoomInX = new QAction("🔍+ Bases", this);
+  actZoomInX->setToolTip("Increase nucleotide base width spacing");
   connect(actZoomInX, &QAction::triggered, contigWidget, &ContigWidget::zoomInX);
   
-  actZoomOutX = new QAction("🔍- Bases (X)", this);
-  actZoomOutX->setToolTip("Decrease base width spacing");
+  actZoomOutX = new QAction("🔍- Bases", this);
+  actZoomOutX->setToolTip("Decrease nucleotide base width spacing");
   connect(actZoomOutX, &QAction::triggered, contigWidget, &ContigWidget::zoomOutX);
   
-  actZoomInY = new QAction("📈+ Peaks (Y)", this);
-  actZoomInY->setToolTip("Increase trace peak amplitude");
+  actZoomInY = new QAction("📈+ Peaks", this);
+  actZoomInY->setToolTip("Increase chromatogram peak height amplitude");
   connect(actZoomInY, &QAction::triggered, contigWidget, &ContigWidget::zoomInY);
   
-  actZoomOutY = new QAction("📉- Peaks (Y)", this);
-  actZoomOutY->setToolTip("Decrease trace peak amplitude");
+  actZoomOutY = new QAction("📉- Peaks", this);
+  actZoomOutY->setToolTip("Decrease chromatogram peak height amplitude");
   connect(actZoomOutY, &QAction::triggered, contigWidget, &ContigWidget::zoomOutY);
   
+  actTrackHeightUp = new QAction("↕+ Row Height", this);
+  actTrackHeightUp->setToolTip("Increase the vertical row height of each track");
+  connect(actTrackHeightUp, &QAction::triggered, contigWidget, &ContigWidget::increaseTrackHeight);
+  
+  actTrackHeightDown = new QAction("↕- Row Height", this);
+  actTrackHeightDown->setToolTip("Decrease the vertical row height of each track");
+  connect(actTrackHeightDown, &QAction::triggered, contigWidget, &ContigWidget::decreaseTrackHeight);
+  
   actResetZoom = new QAction("🔄 Reset Zoom", this);
-  actResetZoom->setToolTip("Reset peak height and horizontal spacing to defaults");
+  actResetZoom->setToolTip("Reset peak height, row height, and horizontal spacing to defaults");
   connect(actResetZoom, &QAction::triggered, contigWidget, &ContigWidget::resetZoom);
   
   actToggleOrfA = new QAction("ORF A (Ref)", this);
@@ -288,7 +315,7 @@ void MainWindow::createActions() {
   });
   
   actToggleAutoRc = new QAction("🔄 Auto RC", this);
-  actToggleAutoRc->setToolTip("Automatically orient reverse-complement reads to match consensus");
+  actToggleAutoRc->setToolTip("Automatically orient complementary reads to match reference strand");
   actToggleAutoRc->setCheckable(true);
   actToggleAutoRc->setChecked(true);
   connect(actToggleAutoRc, &QAction::toggled, this, [this](bool val) {
@@ -322,11 +349,11 @@ void MainWindow::createActions() {
   }
   
   actBlast = new QAction("🌐 BLASTn", this);
-  actBlast->setToolTip("Send selected region to NCBI BLASTn in browser");
+  actBlast->setToolTip("Send selected region to NCBI BLASTn in web browser");
   connect(actBlast, &QAction::triggered, contigWidget, &ContigWidget::openInNcbiBlast);
   
   actProps = new QAction("📊 Properties", this);
-  actProps->setToolTip("Show GC Profile, Tm, MW, and Kyte-Doolittle Hydrophobicity");
+  actProps->setToolTip("Show GC Profile, estimated Tm, MW, and Kyte-Doolittle Hydrophobicity");
   connect(actProps, &QAction::triggered, contigWidget, &ContigWidget::showSequenceProperties);
   
   actReadAloud = new QAction("🔊 Read Aloud", this);
@@ -363,12 +390,17 @@ void MainWindow::createMenus() {
   editMenu->addAction(actCopyImg);
   editMenu->addSeparator();
   editMenu->addAction(actFind);
+  editMenu->addAction(actFindPrev);
+  editMenu->addAction(actFindNext);
+  editMenu->addSeparator();
   editMenu->addAction(actTrimQuality);
   editMenu->addAction(actTrimVectors);
   
   QMenu *viewMenu = menuBar()->addMenu("&View");
   viewMenu->addAction(actZoomInY);
   viewMenu->addAction(actZoomOutY);
+  viewMenu->addAction(actTrackHeightUp);
+  viewMenu->addAction(actTrackHeightDown);
   viewMenu->addAction(actZoomInX);
   viewMenu->addAction(actZoomOutX);
   viewMenu->addAction(actResetZoom);
@@ -456,14 +488,14 @@ void MainWindow::createToolBars() {
   fileBar->addAction(actPrintExport);
   
   // -------------------------------------------------------------------------
-  // 2. Панель параметров выравнивания и сборки (Alignment & Assembly)
+  // 2. Панель алгоритма выравнивания и параметров сборки
   // -------------------------------------------------------------------------
   QToolBar *alignBar = addToolBar("Alignment & Assembly");
   alignBar->setObjectName("AlignToolBar");
   
   alignBar->addWidget(new QLabel(" Algo: ", this));
   algoCombo = new QComboBox(this);
-  algoCombo->setToolTip("Alignment algorithm for pairwise assembly");
+  algoCombo->setToolTip("Select pairwise alignment algorithm");
   const QStringList algoNames = {
     "CAP3 (OLC)",
     "Gotoh (Affine)",
@@ -518,12 +550,14 @@ void MainWindow::createToolBars() {
   });
   
   // -------------------------------------------------------------------------
-  // 3. Панель масштабирования и отображения (View & Zoom)
+  // 3. Панель масштабирования и отображения
   // -------------------------------------------------------------------------
   QToolBar *viewBar = addToolBar("View & Zoom");
   viewBar->setObjectName("ViewToolBar");
   viewBar->addAction(actZoomInY);
   viewBar->addAction(actZoomOutY);
+  viewBar->addAction(actTrackHeightUp);
+  viewBar->addAction(actTrackHeightDown);
   viewBar->addAction(actZoomInX);
   viewBar->addAction(actZoomOutX);
   viewBar->addAction(actResetZoom);
@@ -534,19 +568,32 @@ void MainWindow::createToolBars() {
   viewBar->addAction(actToggleIupac);
   
   // -------------------------------------------------------------------------
-  // 4. Панель редактирования и навигации (Edit & Navigation)
+  // 4. Панель редактирования, поиска и SNP
   // -------------------------------------------------------------------------
   QToolBar *editBar = addToolBar("Edit & Navigation");
   editBar->setObjectName("EditToolBar");
   editBar->addAction(actUndo);
   editBar->addAction(actRedo);
   editBar->addSeparator();
-  editBar->addAction(actFind);
+  
+  searchEdit = new QLineEdit(this);
+  searchEdit->setPlaceholderText("Find bases...");
+  searchEdit->setMaximumWidth(120);
+  searchEdit->setClearButtonEnabled(true);
+  connect(searchEdit, &QLineEdit::returnPressed, this, [this]() {
+    if (searchEdit && !searchEdit->text().isEmpty()) {
+      contigWidget->findSequence(searchEdit->text(), true);
+    }
+  });
+  editBar->addWidget(searchEdit);
+  editBar->addAction(actFindPrev);
+  editBar->addAction(actFindNext);
+  editBar->addSeparator();
   editBar->addAction(actPrevSnp);
   editBar->addAction(actNextSnp);
   
   // -------------------------------------------------------------------------
-  // 5. Панель анализа и тримминга (Analysis & Tools)
+  // 5. Панель анализа и тримминга
   // -------------------------------------------------------------------------
   QToolBar *analysisBar = addToolBar("Analysis & Tools");
   analysisBar->setObjectName("AnalysisToolBar");
@@ -557,7 +604,7 @@ void MainWindow::createToolBars() {
   analysisBar->addAction(actProps);
   
   // -------------------------------------------------------------------------
-  // 6. Панель голосовой диктовки (Text-to-Speech)
+  // 6. Панель голосовой диктовки
   // -------------------------------------------------------------------------
   QToolBar *speechBar = addToolBar("Text-to-Speech Controls");
   speechBar->setObjectName("SpeechToolBar");

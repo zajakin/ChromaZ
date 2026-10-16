@@ -6,11 +6,13 @@
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QSlider>
+#include <QLineEdit>
 #include <QLabel>
 #include <QAction>
 #include <QActionGroup>
 #include <QMenu>
 #include <QCloseEvent>
+#include <vector>
 #include "contigwidget.h"
 
 class MainWindow : public QMainWindow {
@@ -46,6 +48,7 @@ private:
   QComboBox *algoCombo = nullptr;
   QDoubleSpinBox *identitySpin = nullptr;
   QComboBox *tableCombo = nullptr;
+  QLineEdit *searchEdit = nullptr;
   QComboBox *voiceCombo = nullptr;
   QSlider *speedSlider = nullptr;
   QLabel *speedLabel = nullptr;
@@ -61,16 +64,18 @@ private:
   QAction *actPrintExport = nullptr;
   QAction *actExit = nullptr;
   
-  // Действия правки и навигации
+  // Правка и навигация
   QAction *actUndo = nullptr;
   QAction *actRedo = nullptr;
   QAction *actCopySeq = nullptr;
   QAction *actCopyImg = nullptr;
   QAction *actFind = nullptr;
+  QAction *actFindPrev = nullptr;
+  QAction *actFindNext = nullptr;
   QAction *actNextSnp = nullptr;
   QAction *actPrevSnp = nullptr;
   
-  // Действия тримминга и биологического анализа
+  // Тримминг и анализ
   QAction *actTrimQuality = nullptr;
   QAction *actTrimVectors = nullptr;
   QAction *actBlast = nullptr;
@@ -81,6 +86,8 @@ private:
   QAction *actZoomOutX = nullptr;
   QAction *actZoomInY = nullptr;
   QAction *actZoomOutY = nullptr;
+  QAction *actTrackHeightUp = nullptr;
+  QAction *actTrackHeightDown = nullptr;
   QAction *actResetZoom = nullptr;
   QAction *actToggleOrfA = nullptr;
   QAction *actToggleOrfB = nullptr;
@@ -91,7 +98,7 @@ private:
   QActionGroup *algoGroup = nullptr;
   std::vector<QAction*> algoActions;
   
-  // Голосовое чтение и справка
+  // Диктовка и справка
   QAction *actReadAloud = nullptr;
   QAction *actStopRead = nullptr;
   QAction *actAbout = nullptr;
