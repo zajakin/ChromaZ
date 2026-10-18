@@ -38,13 +38,16 @@ Pre-compiled standalone installers are available on the [Releases](https://githu
   * **BLAST (Seed & Extend)** — Accelerated $k$-mer search with extension along the optimal diagonal.
   * **Banded DP** — Banded dynamic programming for long reads.
   * **Wavefront Alignment (WFA)** — Stepwise wavefront error-expansion algorithm.
-  * **Internal Clustal-style** — Built-in affine-gap (Gotoh) pairwise alignment of each read against the contig/reference, merged into a multiple alignment (no external CLI dependencies).
+  * **Clustal-style progressive MSA** — k-mer distance matrix → UPGMA guide tree → profile-to-profile alignment of all reads together with the reference (no external tools).
 * **Auto-Contig & Reference Support**: Automatic seed selection (the longest read), or custom reference sequence loading (FASTA/GenBank).
+* **Background, multi-threaded alignment**: reads are aligned in parallel on all CPU cores in a worker thread; the UI stays responsive, with a progress bar and a *Cancel* button.
+* **Consensus refinement**: optional rounds (*Refine* in the toolbar) re-align all reads to the consensus built in the previous round.
 * **Reverse Complement Detection (Auto RC)**: Automatic strand orientation and alignment for complementary reads (`[RC]`) with manual toggle option.
 
 ---
 
 ### 📈 Chromatogram Analysis & Phred Quality Scores
+* **Coverage Mini-map**: a dockable panel with read depth along the contig, a Phred-quality strip (green/yellow/red), SNP ticks and the visible region; click or drag to navigate. Statistics: covered columns, mean/max depth, low-quality columns.
 * **Four-Color Chromatogram Plot**: Trace visualization for Sanger sequencing files (`.ab1` and `.scf`) using standard base colors (A — green, C — blue, G — black/yellow, T — red).
 * **Phred Quality Scores**: Color-coded quality visualization per base (Green $Q \ge 30$, Yellow $Q \ge 20$, Red $Q < 20$).
 * **Quality Trimming (Trim Low QC)**: Automated low-quality end-trimming based on Phred thresholds.
@@ -55,6 +58,7 @@ Pre-compiled standalone installers are available on the [Releases](https://githu
 ### ✂️ Restriction Analysis & Vector Trimming
 * **REBASE Database Integration**: Built-in support for the commercial REBASE restriction enzyme database (`bionetc.txt` with ~800 enzymes) with automatic build-time retrieval and fallback to Qt resources.
 * **Enzyme Selection**: Choose which enzymes are displayed (filterable checklist, choice is remembered between sessions); sites of several enzymes at one position are merged into a single label.
+* **Virtual Gel**: *Analysis → Virtual Gel…* simulates an agarose gel of the consensus digested with the chosen enzymes (linear or circular, optional undigested lane, DNA ladder, fragment table, PNG export). Enzymes ticked in *Select Enzymes to Display* are preselected.
 * **Cleavage Site Visualization**: Real-time rendering of restriction cut positions with enzyme labels angled above the consensus track, supporting degenerate IUPAC recognition sites and Type IIS shifted cutters (e.g., BsaI).
 * **UniVec Vector Trimming**: 1-click trimming of cloning vector backbones, sequencing primers, and adapters (M13, T7, SP6, etc.) from read ends using fuzzy pattern matching.
 
@@ -67,7 +71,7 @@ Pre-compiled standalone installers are available on the [Releases](https://githu
 ---
 
 ### 🔬 Molecular Biology & PCR Utilities
-* **PCR Primer Melting Temperature ($T_m$)**: Estimation of $T_m$ and GC% for the selected segment (Wallace rule for < 14 nt, basic GC-content formula for longer oligos); shown in the *Properties* window.
+* **PCR Primer Melting Temperature ($T_m$)**: The *Properties* window shows GC%, the Wallace-rule and GC-formula $T_m$ immediately; after entering Na⁺/Mg²⁺ and primer concentrations it adds the nearest-neighbor $T_m$ (SantaLucia 1998) with ΔH, ΔS and ΔG.
 * **1-Click NCBI BLASTn**: Send selected sequences or consensus directly to NCBI BLAST in your default web browser with query parameters pre-filled.
 * **Physicochemical Properties & Protein Graphs**:
   * **GC Profile**: Interactive sliding-window curve of GC content across selected regions.
@@ -91,7 +95,8 @@ Pre-compiled standalone installers are available on the [Releases](https://githu
 * **Full Undo / Redo**: Multi-step history stack (`Ctrl+Z` / `Ctrl+Y` or `Ctrl+Shift+Z`) up to 100 actions.
 * **SNP Navigation**: Single Nucleotide Polymorphism detection with quick jumping controls (`◀ SNP` / `SNP ▶`).
 * **Fast Sequence Search**: Substring match highlighting with automatic viewport auto-scrolling; toolbar search box with *Find ◀ / ▶*.
-* **Deleted Bases**: Deleting a base keeps its slot (shown blank, can be restored by typing a letter) until the next re-alignment or trimming, which commits the deletion.
+* **Deleted Bases**: Deleting a base keeps it (and its trace/quality data) in the read: it is shown as a blank slot, can be restored by typing a letter, and survives re-alignment (the alignment inserts a gap column only if needed). Bases are removed for good only by end trimming.
+* **Recent Files & Autosave**: *File → Open Recent*; the session is autosaved every 2 minutes and can be restored after a crash; unsaved changes are confirmed on exit.
 * **Persistent Settings**: Window layout, algorithm, identity threshold, genetic code, ORF/restriction/IUPAC toggles and speech settings are restored on start.
 * **Clear Workspace**: One-click reset of all loaded tracks.
 * **Drag & Drop**: Track reordering via drag-and-drop and direct file loading onto the viewer.
@@ -137,6 +142,42 @@ Pre-compiled standalone installers are available on the [Releases](https://githu
 | **Mouse Wheel** | Zoom X-axis (Base horizontal spacing) |
 | **Right Click Menu** | BLASTn, properties & graphs (incl. $T_m$), TTS readout, GenBank export, enzyme selection |
 
+## ⌨ Command-Line Options
+
+```
+ChromaZ [options] [files...]
+```
+Files and options are applied right after start-up (also available in the app: **Help → Command-line options…**).
+
+| Option | Description |
+| :--- | :--- |
+| `files...` | Sequencing files (`.ab1 .scf .fasta .fa .gb .gbk .fastq .fq .txt`) and/or a `.ChromaZ` project |
+| `-p, --project <file>` | Open a `.ChromaZ` project |
+| `-r, --reference <file>` | Use the first record of a FASTA/GenBank file as the reference |
+| `-a, --algorithm <name>` | `cap3` (default), `gotoh`, `nw`, `sw`, `blast`, `banded`, `wfa`, `clustal` (progressive MSA), or `0`–`7` |
+| `-i, --min-identity <percent>` | Minimum identity for a read to join the contig (default 45) |
+| `-t, --table <name>` | Genetic code: `standard`, `mito`, `bacterial` (or `0`–`2`) |
+| `--no-auto-rc` | Disable automatic reverse-complement detection |
+| `--iupac` | IUPAC ambiguity codes in the consensus |
+| `--refine <n>` | Consensus refinement rounds (0–10, default 0) |
+| `--threads <n>` | Alignment threads (0 = automatic) |
+| `--no-orf-a`, `--no-orf-b` | Hide the 6-frame translation of the reference / consensus |
+| `--restriction` | Show restriction sites |
+| `--trim-quality <phred>` | Trim low-quality read ends after alignment |
+| `--trim-vectors` | Trim vector / primer sequences from read ends |
+| `--export-fasta`, `--export-gbk`, `--export-png`, `--export-pdf <file>` | Write the consensus / view / report |
+| `--pdf-bases <n>` | Bases per line in the PDF report (default 60) |
+| `--save-project <file>` | Save the resulting workspace |
+| `--quit` | Exit after the requested steps (batch mode; use `QT_QPA_PLATFORM=offscreen` without a display) |
+| `-h, --help`, `-v, --version` | Help / version |
+
+Options given on the command line do not change the saved settings. Examples:
+```bash
+ChromaZ read1.ab1 read2.ab1 --algorithm clustal --refine 2
+ChromaZ -p sample.ChromaZ --export-fasta consensus.fasta --quit
+ChromaZ reads/*.ab1 -r plasmid.gb --trim-quality 20 --trim-vectors --export-pdf report.pdf --quit
+```
+
 ---
 
 ## 🛠 Building & Compilation
@@ -154,6 +195,14 @@ cmake -B build -S src -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
 ./build/ChromaZ
 ```
+
+### Tests and signed releases (CI)
+* Unit tests (`ctest`) run on Linux, Windows and macOS for every push and pull request. They cover SCF v2/v3 and GenBank parsing, alignment (including preservation of deleted bases), progressive MSA, consensus refinement, Tm and virtual-gel calculations.
+* Releases are created once, after all three platforms build successfully, with a `SHA256SUMS.txt`.
+* Installers are signed automatically when these repository secrets exist (otherwise unsigned installers are built):
+  * **Windows** — `WIN_CERT_PFX_BASE64` (base64 of the `.pfx` code-signing certificate), `WIN_CERT_PASSWORD`
+  * **macOS** — `MACOS_CERT_P12_BASE64` (Developer ID Application certificate, base64 `.p12`), `MACOS_CERT_PASSWORD`, `MACOS_SIGN_IDENTITY` (e.g. `Developer ID Application: Name (TEAMID)`)
+  * **macOS notarization** — `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD` (app-specific password); the DMG is then notarized and stapled.
 
 ---
 
