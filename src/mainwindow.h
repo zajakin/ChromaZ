@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QKeySequence>
 #include <QScrollArea>
 #include <QComboBox>
 #include <QDoubleSpinBox>

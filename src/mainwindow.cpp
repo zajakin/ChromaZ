@@ -11,6 +11,7 @@
 #include <QPushButton>
 #include <QLocale>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <cmath>
 
 #ifndef CHROMAZ_VERSION
@@ -33,6 +34,22 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   
   connect(contigWidget, &ContigWidget::restrictionSitesToggled, actToggleRestr, &QAction::setChecked);
   connect(contigWidget, &ContigWidget::autoRCChanged, actToggleAutoRc, &QAction::setChecked);
+  connect(contigWidget, &ContigWidget::showOrfAChanged, actToggleOrfA, &QAction::setChecked);
+  connect(contigWidget, &ContigWidget::showOrfBChanged, actToggleOrfB, &QAction::setChecked);
+  connect(contigWidget, &ContigWidget::consensusIupacChanged, actToggleIupac, &QAction::setChecked);
+  connect(contigWidget, &ContigWidget::alignmentAlgorithmChanged, this, [this](int index) {
+    if (algoCombo) { QSignalBlocker blocker(algoCombo); algoCombo->setCurrentIndex(index); }
+    if (index >= 0 && index < static_cast<int>(algoActions.size())) {
+      QSignalBlocker blocker(algoActions[static_cast<size_t>(index)]);
+      algoActions[static_cast<size_t>(index)]->setChecked(true);
+    }
+  });
+  connect(contigWidget, &ContigWidget::translationTableChanged, this, [this](int index) {
+    if (tableCombo) { QSignalBlocker blocker(tableCombo); tableCombo->setCurrentIndex(index); }
+  });
+  connect(contigWidget, &ContigWidget::minIdentityThresholdChanged, this, [this](double threshold) {
+    if (identitySpin) { QSignalBlocker blocker(identitySpin); identitySpin->setValue(threshold); }
+  });
   connect(contigWidget, &ContigWidget::speechRateChanged, this, [this](double rate) {
     if (speedSlider) {
       int val = std::round((rate + 1.0) * 50.0);
@@ -716,13 +733,21 @@ void MainWindow::openFiles() {
 }
 
 void MainWindow::openProject() {
-  QString p = QFileDialog::getOpenFileName(this, "Open ChromaZ Project", "", "ChromaZ Project (*.ChromaZ)");
-  if (!p.isEmpty()) contigWidget->loadProject(p);
+  const QString path = QFileDialog::getOpenFileName(
+      this, "Open ChromaZ Project", QString(), "ChromaZ Project (*.ChromaZ)");
+  if (!path.isEmpty() && !contigWidget->loadProject(path)) {
+    QMessageBox::warning(this, "Open Project",
+                         "The project could not be loaded. The file may be unreadable, corrupted, or not a ChromaZ project.");
+  }
 }
 
 void MainWindow::saveProject() {
-  QString p = QFileDialog::getSaveFileName(this, "Save ChromaZ Project", "project.ChromaZ", "ChromaZ Project (*.ChromaZ)");
-  if (!p.isEmpty()) contigWidget->saveProject(p);
+  const QString path = QFileDialog::getSaveFileName(
+      this, "Save ChromaZ Project", "project.ChromaZ", "ChromaZ Project (*.ChromaZ)");
+  if (!path.isEmpty() && !contigWidget->saveProject(path)) {
+    QMessageBox::warning(this, "Save Project",
+                         "The project could not be saved to:\n" + path);
+  }
 }
 
 void MainWindow::findSequenceDialog() {

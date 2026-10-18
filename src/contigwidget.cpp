@@ -21,6 +21,10 @@
 #include <QLocale>
 #include <QCoreApplication>
 #include <QRegularExpression>
+#include <QKeySequence>
+#include <QJsonParseError>
+#include <utility>
+#include <iterator>
 #include <QDesktopServices>
 #include <QUrl>
 #include <QUrlQuery>
@@ -467,18 +471,32 @@ bool ContigWidget::matchIupac(QChar seqChar, QChar motifChar) const {
 }
 
 QString ContigWidget::getSelectedSequence() const {
-  if (selTrack == SEL_NONE || selStartCol < 0 || selEndCol < 0) return "";
-  int minC = std::min(selStartCol, selEndCol), maxC = std::max(selStartCol, selEndCol);
-  int len = maxC - minC + 1;
-  QString seq = "";
-  if (selTrack == SEL_REF) seq = referenceSeq.mid(minC, len);
-  else if (selTrack == SEL_CONSENSUS) seq = consensusSeq.mid(minC, len);
-  else if (selTrack >= 0 && selTrack < (int)tracks.size()) {
-    QString full = tracks[selTrack].alignment.alignedRead.isEmpty() ? 
-    tracks[selTrack].originalData.sequence : tracks[selTrack].alignment.alignedRead;
+  if (selTrack == SEL_NONE || selStartCol < 0 || selEndCol < 0) return {};
+
+  const int minC = std::min(selStartCol, selEndCol);
+  const int len = std::abs(selEndCol - selStartCol) + 1;
+  QString seq;
+
+  if (selTrack == SEL_REF) {
+    seq = referenceSeq.mid(minC, len);
+  } else if (selTrack == SEL_CONSENSUS) {
+    seq = consensusSeq.mid(minC, len);
+  } else if (selTrack <= SEL_ORF1 && selTrack >= SEL_ORF_REV3) {
+    const int frame = SEL_ORF1 - selTrack;
+    seq = getOrfLine(frame, referenceSeq).mid(minC, len);
+  } else if (selTrack <= SEL_ORF_B1 && selTrack >= SEL_ORF_BREV3) {
+    const int frame = SEL_ORF_B1 - selTrack;
+    seq = getOrfLine(frame, consensusSeq).mid(minC, len);
+  } else if (selTrack >= 0 && selTrack < static_cast<int>(tracks.size())) {
+    const auto &track = tracks[selTrack];
+    const QString &full = track.alignment.alignedRead.isEmpty()
+                            ? track.originalData.sequence
+                            : track.alignment.alignedRead;
     seq = full.mid(minC, len);
   }
-  return seq.remove('-').remove(' ');
+
+  seq.remove('-').remove(' ');
+  return seq;
 }
 
 void ContigWidget::pushUndoState() {
@@ -493,6 +511,8 @@ void ContigWidget::pushUndoState() {
   state.showOrfA = showOrfA;
   state.showOrfB = showOrfB;
   state.isAutoReference = isAutoReference;
+  state.currentAlgorithm = currentAlgorithm;
+  state.minIdentityThreshold = minIdentityThreshold;
   undoStack.push_back(state);
   if (undoStack.size() > 100) undoStack.erase(undoStack.begin());
   redoStack.clear();
@@ -505,13 +525,18 @@ void ContigWidget::undo() {
   currentState.tracks = tracks; currentState.selTrack = selTrack;
   currentState.selStartCol = selStartCol; currentState.selEndCol = selEndCol;
   currentState.autoRCEnabled = autoRCEnabled; currentState.showOrfA = showOrfA; currentState.showOrfB = showOrfB; currentState.isAutoReference = isAutoReference;
+  currentState.currentAlgorithm = currentAlgorithm; currentState.minIdentityThreshold = minIdentityThreshold;
   redoStack.push_back(currentState);
   WidgetState prevState = undoStack.back(); undoStack.pop_back();
   referenceSeq = prevState.referenceSeq; consensusSeq = prevState.consensusSeq;
   tracks = prevState.tracks; selTrack = prevState.selTrack;
   selStartCol = prevState.selStartCol; selEndCol = prevState.selEndCol;
   autoRCEnabled = prevState.autoRCEnabled; showOrfA = prevState.showOrfA; showOrfB = prevState.showOrfB; isAutoReference = prevState.isAutoReference;
+  currentAlgorithm = prevState.currentAlgorithm; minIdentityThreshold = prevState.minIdentityThreshold;
   emit autoRCChanged(autoRCEnabled);
+  emit showOrfAChanged(showOrfA); emit showOrfBChanged(showOrfB);
+  emit alignmentAlgorithmChanged(static_cast<int>(currentAlgorithm));
+  emit minIdentityThresholdChanged(minIdentityThreshold);
   calculateConsensusAndSNPs(); updateLayoutGeometry(); fitToWindowHeight(); update();
 }
 
@@ -522,13 +547,18 @@ void ContigWidget::redo() {
   currentState.tracks = tracks; currentState.selTrack = selTrack;
   currentState.selStartCol = selStartCol; currentState.selEndCol = selEndCol;
   currentState.autoRCEnabled = autoRCEnabled; currentState.showOrfA = showOrfA; currentState.showOrfB = showOrfB; currentState.isAutoReference = isAutoReference;
+  currentState.currentAlgorithm = currentAlgorithm; currentState.minIdentityThreshold = minIdentityThreshold;
   undoStack.push_back(currentState);
   WidgetState nextState = redoStack.back(); redoStack.pop_back();
   referenceSeq = nextState.referenceSeq; consensusSeq = nextState.consensusSeq;
   tracks = nextState.tracks; selTrack = nextState.selTrack;
   selStartCol = nextState.selStartCol; selEndCol = nextState.selEndCol;
   autoRCEnabled = nextState.autoRCEnabled; showOrfA = nextState.showOrfA; showOrfB = nextState.showOrfB; isAutoReference = nextState.isAutoReference;
+  currentAlgorithm = nextState.currentAlgorithm; minIdentityThreshold = nextState.minIdentityThreshold;
   emit autoRCChanged(autoRCEnabled);
+  emit showOrfAChanged(showOrfA); emit showOrfBChanged(showOrfB);
+  emit alignmentAlgorithmChanged(static_cast<int>(currentAlgorithm));
+  emit minIdentityThresholdChanged(minIdentityThreshold);
   calculateConsensusAndSNPs(); updateLayoutGeometry(); fitToWindowHeight(); update();
 }
 
@@ -643,15 +673,18 @@ bool ContigWidget::addAb1Track(const QString &filePath, const Ab1Data &data) {
 
 void ContigWidget::setAutoRC(bool enable) {
   if (autoRCEnabled == enable) return;
-  pushUndoState();
+  if (!tracks.empty() || !referenceSeq.isEmpty() || !consensusSeq.isEmpty())
+    pushUndoState();
   autoRCEnabled = enable;
   suppressUndo = true; runAlignment(); suppressUndo = false;
 }
 
 void ContigWidget::setShowOrfA(bool enable) {
   if (showOrfA == enable) return;
-  pushUndoState();
+  if (!tracks.empty() || !referenceSeq.isEmpty() || !consensusSeq.isEmpty())
+    pushUndoState();
   showOrfA = enable;
+  emit showOrfAChanged(showOrfA);
   updateLayoutGeometry();
   fitToWindowHeight();
   update();
@@ -659,36 +692,73 @@ void ContigWidget::setShowOrfA(bool enable) {
 
 void ContigWidget::setShowOrfB(bool enable) {
   if (showOrfB == enable) return;
-  pushUndoState();
+  if (!tracks.empty() || !referenceSeq.isEmpty() || !consensusSeq.isEmpty())
+    pushUndoState();
   showOrfB = enable;
+  emit showOrfBChanged(showOrfB);
   updateLayoutGeometry();
   fitToWindowHeight();
   update();
 }
 
 void ContigWidget::setAlignmentAlgorithm(int algoIdx) {
-  if (algoIdx >= 0 && algoIdx <= 7) {
-    currentAlgorithm = static_cast<AlignmentAlgorithm>(algoIdx);
+  if (algoIdx < 0 || algoIdx > 7) return;
+  const auto algorithm = static_cast<AlignmentAlgorithm>(algoIdx);
+  const bool changed = (currentAlgorithm != algorithm);
+
+  // Save the previous settings and alignment before a user-requested re-alignment.
+  if (!tracks.empty() || !referenceSeq.isEmpty() || !consensusSeq.isEmpty())
+    pushUndoState();
+  if (changed) {
+    currentAlgorithm = algorithm;
     if (isAutoReference) {
-      referenceSeq.clear(); consensusSeq.clear(); isAutoReference = false;
+      referenceSeq.clear();
+      consensusSeq.clear();
+      isAutoReference = false;
       for (auto &tr : tracks) tr.alignment = AlignmentResult();
     }
-    runAlignment();
   }
+
+  suppressUndo = true;
+  runAlignment();
+  suppressUndo = false;
+  if (changed) emit alignmentAlgorithmChanged(algoIdx);
 }
 
 void ContigWidget::setTranslationTable(int tableIdx) {
-  translationTable = tableIdx;
+  const int boundedIndex = std::clamp(tableIdx, 0, 2);
+  if (translationTable == boundedIndex) return;
+  translationTable = boundedIndex;
+  emit translationTableChanged(translationTable);
   update();
 }
 
 void ContigWidget::setMinIdentityThreshold(double val) {
-  pushUndoState();
+  if (!std::isfinite(val)) return;
+  val = std::clamp(val, 0.0, 100.0);
+  if (std::abs(minIdentityThreshold - val) < 1e-9) return;
+
+  if (!tracks.empty() || !referenceSeq.isEmpty() || !consensusSeq.isEmpty())
+    pushUndoState();
   minIdentityThreshold = val;
+  QString selectedTrackPath;
+  if (selTrack >= 0 && selTrack < static_cast<int>(tracks.size()))
+    selectedTrackPath = tracks[static_cast<size_t>(selTrack)].filePath;
+
   for (auto &track : tracks) track.inContig = (track.alignment.identity >= minIdentityThreshold);
   std::stable_sort(tracks.begin(), tracks.end(), [](const AlignedTrack &a, const AlignedTrack &b) {
     return a.inContig > b.inContig;
   });
+  if (!selectedTrackPath.isEmpty()) {
+    const auto selected = std::find_if(tracks.begin(), tracks.end(), [&](const AlignedTrack &track) {
+      return track.filePath == selectedTrackPath;
+    });
+    if (selected != tracks.end()) selTrack = static_cast<int>(std::distance(tracks.begin(), selected));
+    else { selTrack = SEL_NONE; selStartCol = selEndCol = -1; }
+  }
+  searchMatches.clear();
+  currentMatchIdx = -1;
+  emit minIdentityThresholdChanged(minIdentityThreshold);
   calculateConsensusAndSNPs();
   fitToWindowHeight();
   updateLayoutGeometry();
@@ -696,7 +766,9 @@ void ContigWidget::setMinIdentityThreshold(double val) {
 }
 
 void ContigWidget::setConsensusIupac(bool enable) {
+  if (useIupacConsensus == enable) return;
   useIupacConsensus = enable;
+  emit consensusIupacChanged(useIupacConsensus);
   calculateConsensusAndSNPs();
   update();
 }
@@ -778,7 +850,7 @@ void ContigWidget::showSequenceProperties() {
               nl->addWidget(txtNucSeq);
               
               int winGC = std::min(15, totalLen);
-              if (winGC % 2 == 0) winGC++;
+              if (winGC > 1 && winGC % 2 == 0) winGC--;
               int halfGC = winGC / 2;
               QVector<double> gcValues;
               for (int i = 0; i < totalLen; ++i) {
@@ -822,7 +894,7 @@ void ContigWidget::showSequenceProperties() {
                 if (aa != ' ' && aa != '*') aaSeq += aa;
               }
               
-              double totalMW = 18.015;
+              double totalMW = aaSeq.isEmpty() ? 0.0 : 18.015;
               for (QChar aa : aaSeq) totalMW += getAAMolecularWeight(aa);
               
               QLabel *lblProtSummary = new QLabel(
@@ -843,7 +915,7 @@ void ContigWidget::showSequenceProperties() {
                           pl->addWidget(txtProtSeq);
                           
                           int winKD = std::min(7, (int)aaSeq.length());
-                          if (winKD % 2 == 0) winKD++;
+                          if (winKD > 1 && winKD % 2 == 0) winKD--;
                           int halfKD = winKD / 2;
                           QVector<double> kdValues;
                           for (int i = 0; i < aaSeq.length(); ++i) {
@@ -1541,60 +1613,96 @@ bool ContigWidget::saveProject(const QString &filePath) {
 bool ContigWidget::loadProject(const QString &filePath) {
   QFile file(filePath);
   if (!file.open(QIODevice::ReadOnly)) return false;
-  QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-  if (!doc.isObject()) return false;
-  
-  clearAll();
-  QJsonObject root = doc.object();
-  referenceSeq = root["referenceSeq"].toString();
-  consensusSeq = root["consensusSeq"].toString();
-  isAutoReference = root["isAutoReference"].toBool();
-  minIdentityThreshold = root["minIdentityThreshold"].toDouble(45.0);
-  useIupacConsensus = root["useIupacConsensus"].toBool(false);
-  translationTable = root["translationTable"].toInt(0);
-  currentAlgorithm = static_cast<AlignmentAlgorithm>(root["currentAlgorithm"].toInt(0));
-  autoRCEnabled = root["autoRCEnabled"].toBool(true);
-  showOrfA = root["showOrfA"].toBool(true);
-  showOrfB = root["showOrfB"].toBool(true);
-  scaleX = root["scaleX"].toDouble(14.0);
-  scaleY = root["scaleY"].toDouble(0.05);
-  trackHeight = root["trackHeight"].toInt(120);
-  leftMarginWidth = root["leftMarginWidth"].toInt(220);
-  
-  auto jsonToVec = [](const QJsonArray &arr) {
-    std::vector<int> vec; for (auto val : arr) vec.push_back(val.toInt()); return vec;
-  };
-  
-  QJsonArray tracksArray = root["tracks"].toArray();
-  for (auto val : tracksArray) {
-    QJsonObject trObj = val.toObject();
-    AlignedTrack tr;
-    tr.filePath = trObj["filePath"].toString();
-    tr.fileName = trObj["fileName"].toString();
-    tr.inContig = trObj["inContig"].toBool();
-    tr.overrideRC = trObj["overrideRC"].toBool(false);
-    
-    QJsonObject ab1Obj = trObj["originalData"].toObject();
-    tr.originalData.sequence = ab1Obj["sequence"].toString();
-    tr.originalData.isValid = ab1Obj["isValid"].toBool();
-    tr.originalData.traceA = jsonToVec(ab1Obj["traceA"].toArray());
-    tr.originalData.traceC = jsonToVec(ab1Obj["traceC"].toArray());
-    tr.originalData.traceG = jsonToVec(ab1Obj["traceG"].toArray());
-    tr.originalData.traceT = jsonToVec(ab1Obj["traceT"].toArray());
-    tr.originalData.basePositions = jsonToVec(ab1Obj["basePositions"].toArray());
-    tr.originalData.qualityScores = jsonToVec(ab1Obj["qualityScores"].toArray());
-    
-    QJsonObject algObj = trObj["alignment"].toObject();
-    tr.alignment.alignedRef = algObj["alignedRef"].toString();
-    tr.alignment.alignedRead = algObj["alignedRead"].toString();
-    tr.alignment.score = algObj["score"].toInt();
-    tr.alignment.identity = algObj["identity"].toDouble();
-    tr.alignment.isReverseComplement = algObj["isReverseComplement"].toBool();
-    tracks.push_back(tr);
+
+  QJsonParseError parseError;
+  const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+  if (parseError.error != QJsonParseError::NoError || !doc.isObject()) return false;
+
+  const QJsonObject root = doc.object();
+  if (root.value("format").toString() != "ChromaZ" || !root.value("tracks").isArray())
+    return false;
+
+  // Validate the project before clearing the currently open workspace.
+  const QJsonArray tracksArray = root.value("tracks").toArray();
+  for (const QJsonValue &value : tracksArray) {
+    if (!value.isObject()) return false;
+    const QJsonObject trackObject = value.toObject();
+    if (!trackObject.value("originalData").isObject() ||
+        !trackObject.value("originalData").toObject().value("sequence").isString())
+      return false;
   }
-  
-  calculateConsensusAndSNPs(); fitToWindowHeight(); updateLayoutGeometry(); update();
-  undoStack.clear(); redoStack.clear(); emit autoRCChanged(autoRCEnabled); emit projectLoaded(filePath);
+
+  clearAll();
+  referenceSeq = root.value("referenceSeq").toString();
+  consensusSeq = root.value("consensusSeq").toString();
+  isAutoReference = root.value("isAutoReference").toBool();
+
+  const double savedThreshold = root.value("minIdentityThreshold").toDouble(45.0);
+  minIdentityThreshold = std::isfinite(savedThreshold)
+                           ? std::clamp(savedThreshold, 0.0, 100.0) : 45.0;
+  useIupacConsensus = root.value("useIupacConsensus").toBool(false);
+  translationTable = std::clamp(root.value("translationTable").toInt(0), 0, 2);
+  const int algoIndex = root.value("currentAlgorithm").toInt(0);
+  currentAlgorithm = static_cast<AlignmentAlgorithm>(std::clamp(algoIndex, 0, 7));
+  autoRCEnabled = root.value("autoRCEnabled").toBool(true);
+  showOrfA = root.value("showOrfA").toBool(true);
+  showOrfB = root.value("showOrfB").toBool(true);
+
+  const double savedScaleX = root.value("scaleX").toDouble(14.0);
+  const double savedScaleY = root.value("scaleY").toDouble(0.05);
+  scaleX = std::isfinite(savedScaleX) ? std::clamp(savedScaleX, 2.0, 100.0) : 14.0;
+  scaleY = std::isfinite(savedScaleY) ? std::clamp(savedScaleY, 0.001, 10.0) : 0.05;
+  trackHeight = std::clamp(root.value("trackHeight").toInt(120), 60, 1000);
+  leftMarginWidth = std::clamp(root.value("leftMarginWidth").toInt(220), 80, 800);
+
+  auto jsonToVec = [](const QJsonArray &array) {
+    std::vector<int> result;
+    result.reserve(static_cast<size_t>(array.size()));
+    for (const QJsonValue &item : array) result.push_back(item.toInt());
+    return result;
+  };
+
+  for (const QJsonValue &value : tracksArray) {
+    const QJsonObject trackObject = value.toObject();
+    AlignedTrack track;
+    track.filePath = trackObject.value("filePath").toString();
+    track.fileName = trackObject.value("fileName").toString();
+    track.inContig = trackObject.value("inContig").toBool(true);
+    track.overrideRC = trackObject.value("overrideRC").toBool(false);
+
+    const QJsonObject ab1Object = trackObject.value("originalData").toObject();
+    track.originalData.sequence = ab1Object.value("sequence").toString();
+    track.originalData.isValid = ab1Object.value("isValid").toBool(true);
+    track.originalData.traceA = jsonToVec(ab1Object.value("traceA").toArray());
+    track.originalData.traceC = jsonToVec(ab1Object.value("traceC").toArray());
+    track.originalData.traceG = jsonToVec(ab1Object.value("traceG").toArray());
+    track.originalData.traceT = jsonToVec(ab1Object.value("traceT").toArray());
+    track.originalData.basePositions = jsonToVec(ab1Object.value("basePositions").toArray());
+    track.originalData.qualityScores = jsonToVec(ab1Object.value("qualityScores").toArray());
+
+    const QJsonObject alignmentObject = trackObject.value("alignment").toObject();
+    track.alignment.alignedRef = alignmentObject.value("alignedRef").toString();
+    track.alignment.alignedRead = alignmentObject.value("alignedRead").toString();
+    track.alignment.score = alignmentObject.value("score").toInt();
+    track.alignment.identity = alignmentObject.value("identity").toDouble();
+    track.alignment.isReverseComplement = alignmentObject.value("isReverseComplement").toBool();
+    tracks.push_back(std::move(track));
+  }
+
+  calculateConsensusAndSNPs();
+  fitToWindowHeight();
+  updateLayoutGeometry();
+  update();
+  undoStack.clear();
+  redoStack.clear();
+  emit autoRCChanged(autoRCEnabled);
+  emit showOrfAChanged(showOrfA);
+  emit showOrfBChanged(showOrfB);
+  emit consensusIupacChanged(useIupacConsensus);
+  emit alignmentAlgorithmChanged(static_cast<int>(currentAlgorithm));
+  emit translationTableChanged(translationTable);
+  emit minIdentityThresholdChanged(minIdentityThreshold);
+  emit projectLoaded(filePath);
   return true;
 }
 
@@ -1770,12 +1878,29 @@ void ContigWidget::setReference(const QString &seq) {
 }
 
 void ContigWidget::clearAll() {
-  pushUndoState(); referenceSeq.clear(); consensusSeq.clear(); tracks.clear();
-  selTrack = SEL_NONE; searchMatches.clear(); currentMatchIdx = -1; updateLayoutGeometry(); update();
+  pushUndoState();
+  referenceSeq.clear();
+  consensusSeq.clear();
+  tracks.clear();
+  isAutoReference = false;
+  snpColumns.clear();
+  currentSnpIdx = -1;
+  selTrack = SEL_NONE;
+  selStartCol = -1;
+  selEndCol = -1;
+  isSelecting = false;
+  searchMatches.clear();
+  currentMatchIdx = -1;
+  lastSearchQuery.clear();
+  updateLayoutGeometry();
+  update();
 }
 
 void ContigWidget::runAlignment() {
   if (tracks.empty()) return;
+  QString selectedTrackPath;
+  if (selTrack >= 0 && selTrack < static_cast<int>(tracks.size()))
+    selectedTrackPath = tracks[static_cast<size_t>(selTrack)].filePath;
   CursorGuard cursorGuard; if (!suppressUndo) pushUndoState();
   if (isAutoReference) { referenceSeq.clear(); consensusSeq.clear(); isAutoReference = false; for (auto &tr : tracks) { tr.alignment = AlignmentResult(); } }
   
@@ -1857,6 +1982,13 @@ void ContigWidget::runAlignment() {
   }
   
   std::stable_sort(tracks.begin(), tracks.end(), [](const AlignedTrack &a, const AlignedTrack &b) { return a.inContig > b.inContig; });
+  if (!selectedTrackPath.isEmpty()) {
+    const auto selected = std::find_if(tracks.begin(), tracks.end(), [&](const AlignedTrack &track) {
+      return track.filePath == selectedTrackPath;
+    });
+    if (selected != tracks.end()) selTrack = static_cast<int>(std::distance(tracks.begin(), selected));
+    else { selTrack = SEL_NONE; selStartCol = selEndCol = -1; }
+  }
   calculateConsensusAndSNPs(); searchMatches.clear(); currentMatchIdx = -1; fitToWindowHeight(); updateLayoutGeometry(); update();
 }
 
@@ -1909,11 +2041,11 @@ int ContigWidget::getMaxCols() const {
   return std::max(maxC, 50);
 }
 
-void ContigWidget::zoomInX() { scaleX *= 1.2; updateLayoutGeometry(); update(); }
+void ContigWidget::zoomInX() { scaleX = std::min(100.0, scaleX * 1.2); updateLayoutGeometry(); update(); }
 void ContigWidget::zoomOutX() { scaleX = std::max(2.0, scaleX / 1.2); updateLayoutGeometry(); update(); }
-void ContigWidget::zoomInY() { scaleY *= 1.2; updateLayoutGeometry(); update(); }
+void ContigWidget::zoomInY() { scaleY = std::min(10.0, scaleY * 1.2); updateLayoutGeometry(); update(); }
 void ContigWidget::zoomOutY() { scaleY = std::max(0.001, scaleY / 1.2); updateLayoutGeometry(); update(); }
-void ContigWidget::increaseTrackHeight() { trackHeight += 15; updateLayoutGeometry(); update(); }
+void ContigWidget::increaseTrackHeight() { trackHeight = std::min(1000, trackHeight + 15); updateLayoutGeometry(); update(); }
 void ContigWidget::decreaseTrackHeight() { trackHeight = std::max(60, trackHeight - 15); updateLayoutGeometry(); update(); }
 void ContigWidget::resetZoom() { scaleX = 14.0; scaleY = 0.05; trackHeight = 120; updateLayoutGeometry(); update(); }
 
@@ -2233,15 +2365,21 @@ void ContigWidget::dragEnterEvent(QDragEnterEvent *event) { if (event->mimeData(
 void ContigWidget::dropEvent(QDropEvent *event) {
   for (const QUrl &url : event->mimeData()->urls()) {
     QString filePath = url.toLocalFile(); if (filePath.isEmpty()) continue;
-    if (filePath.endsWith(".ChromaZ", Qt::CaseInsensitive)) { loadProject(filePath); return; }
+    if (filePath.endsWith(".ChromaZ", Qt::CaseInsensitive)) {
+      if (!loadProject(filePath)) {
+        QMessageBox::warning(this, "Open Project",
+                             "The project could not be loaded. The file may be unreadable, corrupted, or not a ChromaZ project.");
+      }
+      return;
+    }
     if (filePath.endsWith(".fastq", Qt::CaseInsensitive) || filePath.endsWith(".fq", Qt::CaseInsensitive)) {
       auto records = SequenceFileParser::parseFastq(filePath);
-      for (const auto &rec : records) { QString trackId = (records.size() > 1) ? QString("%1 [%2]").arg(QFileInfo(filePath).fileName()).arg(rec.name) : filePath; addAb1Track(trackId, rec.data); }
+      for (const auto &rec : records) { QString trackId = (records.size() > 1) ? filePath + " [" + rec.name + "]" : filePath; addAb1Track(trackId, rec.data); }
       continue;
     }
     if (filePath.endsWith(".txt", Qt::CaseInsensitive)) {
       auto records = SequenceFileParser::parseTxt(filePath);
-      for (const auto &rec : records) { QString trackId = (records.size() > 1) ? QString("%1 [%2]").arg(QFileInfo(filePath).fileName()).arg(rec.name) : filePath; addAb1Track(trackId, rec.data); }
+      for (const auto &rec : records) { QString trackId = (records.size() > 1) ? filePath + " [" + rec.name + "]" : filePath; addAb1Track(trackId, rec.data); }
       continue;
     }
     if (isFileLoaded(filePath)) continue;
@@ -2249,7 +2387,7 @@ void ContigWidget::dropEvent(QDropEvent *event) {
       Ab1Data data = Ab1Parser::parse(filePath); if (data.isValid) addAb1Track(filePath, data);
     } else if (filePath.endsWith(".fasta", Qt::CaseInsensitive) || filePath.endsWith(".fa", Qt::CaseInsensitive) || filePath.endsWith(".gb", Qt::CaseInsensitive) || filePath.endsWith(".gbk", Qt::CaseInsensitive)) {
       auto records = SequenceFileParser::parseFastaOrGbRecords(filePath);
-      for (const auto &rec : records) { QString trackId = (records.size() > 1) ? QString("%1 [%2]").arg(QFileInfo(filePath).fileName()).arg(rec.name) : filePath; addAb1Track(trackId, rec.data); }
+      for (const auto &rec : records) { QString trackId = (records.size() > 1) ? filePath + " [" + rec.name + "]" : filePath; addAb1Track(trackId, rec.data); }
     }
   }
   runAlignment();

@@ -57,6 +57,8 @@ struct WidgetState {
   bool showOrfA;
   bool showOrfB;
   bool isAutoReference = false;
+  AlignmentAlgorithm currentAlgorithm = AlignmentAlgorithm::OverlapCAP3;
+  double minIdentityThreshold = 45.0;
 };
 
 struct RestEnzyme {
@@ -111,6 +113,12 @@ public:
     void projectLoaded(const QString &filePath);
   void autoRCChanged(bool enabled);
   void restrictionSitesToggled(bool visible);
+  void showOrfAChanged(bool enabled);
+  void showOrfBChanged(bool enabled);
+  void consensusIupacChanged(bool enabled);
+  void alignmentAlgorithmChanged(int algorithmIndex);
+  void translationTableChanged(int tableIndex);
+  void minIdentityThresholdChanged(double threshold);
   void speechRateChanged(double rate);
   void voiceChanged(const QVoice &voice);
   
