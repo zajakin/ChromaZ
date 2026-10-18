@@ -50,6 +50,12 @@
 #include <QStandardItemModel>
 #include <QSortFilterProxyModel>
 #include <QSettings>
+#include <QDoubleSpinBox>
+#include <QFormLayout>
+#include "alignjob.h"
+#include "alignworker.h"
+#include "tmcalc.h"
+#include "virtualgel.h"
 #include <map>
 #include <cmath>
 #include <algorithm>
@@ -261,6 +267,8 @@ ContigWidget::ContigWidget(QWidget *parent) : QWidget(parent) {
   loadRestrictionEnzymes();
   updateLayoutGeometry();
 }
+
+ContigWidget::~ContigWidget() { blockSignals(true); abortAlignment(); }
 
 QList<QVoice> ContigWidget::getAvailableVoices() const {
   if (tts) return tts->availableVoices();
@@ -516,9 +524,11 @@ void ContigWidget::pushUndoState() {
   undoStack.push_back(state);
   if (undoStack.size() > 100) undoStack.erase(undoStack.begin());
   redoStack.clear();
+  markModified();
 }
 
 void ContigWidget::undo() {
+  abortAlignment();
   if (undoStack.empty()) return;
   WidgetState currentState;
   currentState.referenceSeq = referenceSeq; currentState.consensusSeq = consensusSeq;
@@ -537,10 +547,11 @@ void ContigWidget::undo() {
   emit showOrfAChanged(showOrfA); emit showOrfBChanged(showOrfB);
   emit alignmentAlgorithmChanged(static_cast<int>(currentAlgorithm));
   emit minIdentityThresholdChanged(minIdentityThreshold);
-  calculateConsensusAndSNPs(); updateLayoutGeometry(); fitToWindowHeight(); update();
+  calculateConsensusAndSNPs(); updateLayoutGeometry(); fitToWindowHeight(); update(); markModified();
 }
 
 void ContigWidget::redo() {
+  abortAlignment();
   if (redoStack.empty()) return;
   WidgetState currentState;
   currentState.referenceSeq = referenceSeq; currentState.consensusSeq = consensusSeq;
@@ -559,7 +570,7 @@ void ContigWidget::redo() {
   emit showOrfAChanged(showOrfA); emit showOrfBChanged(showOrfB);
   emit alignmentAlgorithmChanged(static_cast<int>(currentAlgorithm));
   emit minIdentityThresholdChanged(minIdentityThreshold);
-  calculateConsensusAndSNPs(); updateLayoutGeometry(); fitToWindowHeight(); update();
+  calculateConsensusAndSNPs(); updateLayoutGeometry(); fitToWindowHeight(); update(); markModified();
 }
 
 QChar ContigWidget::translateCodon(const QString& codon, int tableIndex) const {
@@ -659,6 +670,7 @@ bool ContigWidget::isFileLoaded(const QString &filePath) const {
 
 bool ContigWidget::addAb1Track(const QString &filePath, const Ab1Data &data) {
   if (isFileLoaded(filePath)) return false;
+  abortAlignment();
   pushUndoState();
   AlignedTrack track;
   track.filePath = filePath;
@@ -711,12 +723,6 @@ void ContigWidget::setAlignmentAlgorithm(int algoIdx) {
     pushUndoState();
   if (changed) {
     currentAlgorithm = algorithm;
-    if (isAutoReference) {
-      referenceSeq.clear();
-      consensusSeq.clear();
-      isAutoReference = false;
-      for (auto &tr : tracks) tr.alignment = AlignmentResult();
-    }
   }
 
   suppressUndo = true;
@@ -827,19 +833,24 @@ void ContigWidget::showSequenceProperties() {
   double gcPercent = (totalLen > 0) ? (gcCount * 100.0 / totalLen) : 0.0;
   double atPercent = (totalLen > 0) ? (atCount * 100.0 / totalLen) : 0.0;
   
-  double tm = 0.0;
-  if (totalLen > 0) {
-    tm = (totalLen < 14) ? (atCount * 2.0 + gcCount * 4.0) : (64.9 + 41.0 * (gcCount - 16.4) / totalLen);
-  }
-  
+  const std::string seqStd = seq.toStdString();
+  const double tmWallace = TmCalc::wallace(seqStd);
+  const double tmGc = TmCalc::gcFormula(seqStd);
+
   QLabel *lblNucSummary = new QLabel(
     QString("<b>Length:</b> %1 bp &nbsp;&nbsp;|&nbsp;&nbsp; "
-              "<b>GC Content:</b> %2% &nbsp;&nbsp;|&nbsp;&nbsp; "
-              "<b>AT Content:</b> %3% &nbsp;&nbsp;|&nbsp;&nbsp; "
-              "<b>Estimated Tm (PCR):</b> %4 °C")
-    .arg(totalLen).arg(gcPercent, 0, 'f', 1).arg(atPercent, 0, 'f', 1).arg(tm, 0, 'f', 1));
-              lblNucSummary->setTextFormat(Qt::RichText);
-              nl->addWidget(lblNucSummary);
+            "<b>GC Content:</b> %2% &nbsp;&nbsp;|&nbsp;&nbsp; "
+            "<b>AT Content:</b> %3%")
+    .arg(totalLen).arg(gcPercent, 0, 'f', 1).arg(atPercent, 0, 'f', 1));
+  lblNucSummary->setTextFormat(Qt::RichText);
+  nl->addWidget(lblNucSummary);
+
+  QLabel *lblTm = new QLabel(
+    QString("<b>Tm, Wallace rule:</b> %1 °C <span style='color:gray'>(2·(A+T) + 4·(G+C); intended for &lt; 14 nt)</span><br>"
+            "<b>Tm, GC formula:</b> %2 °C <span style='color:gray'>(64.9 + 41·(G+C − 16.4)/N; intended for ≥ 14 nt)</span>")
+    .arg(tmWallace, 0, 'f', 1).arg(tmGc, 0, 'f', 1));
+  lblTm->setTextFormat(Qt::RichText);
+  nl->addWidget(lblTm);
               
               nl->addWidget(new QLabel("<b>Nucleotide Sequence (with 1-based coordinates):</b>"));
               QPlainTextEdit *txtNucSeq = new QPlainTextEdit();
@@ -848,6 +859,53 @@ void ContigWidget::showSequenceProperties() {
               txtNucSeq->setPlainText(formatSequenceWithCoordinates(seq, 60, 10));
               txtNucSeq->setMaximumHeight(140);
               nl->addWidget(txtNucSeq);
+
+              // Уточнённая Tm по методу ближайших соседей — после ввода концентраций соли и праймера.
+              QGroupBox *nnBox = new QGroupBox("Nearest-neighbor Tm (SantaLucia 1998): enter salt and primer concentrations");
+              QFormLayout *nnForm = new QFormLayout(nnBox);
+              auto makeSpin = [](double maxV, int decimals, const QString &suffix) {
+                QDoubleSpinBox *sp = new QDoubleSpinBox();
+                sp->setRange(0.0, maxV);
+                sp->setDecimals(decimals);
+                sp->setSuffix(suffix);
+                sp->setSpecialValueText("—");   // 0 = не задано
+                sp->setValue(0.0);
+                return sp;
+              };
+              QDoubleSpinBox *spNa = makeSpin(2000.0, 1, " mM");
+              QDoubleSpinBox *spMg = makeSpin(100.0, 2, " mM");
+              QDoubleSpinBox *spPrimer = makeSpin(100000.0, 1, " nM");
+              nnForm->addRow("Na⁺ / K⁺ concentration:", spNa);
+              nnForm->addRow("Mg²⁺ concentration (optional):", spMg);
+              nnForm->addRow("Primer concentration:", spPrimer);
+              QLabel *lblNN = new QLabel("Enter Na⁺ (or Mg²⁺) and primer concentrations to calculate.");
+              lblNN->setTextFormat(Qt::RichText);
+              lblNN->setWordWrap(true);
+              nnForm->addRow(lblNN);
+              auto updateNN = [spNa, spMg, spPrimer, lblNN, seqStd]() {
+                const double na = spNa->value(), mg = spMg->value(), pr = spPrimer->value();
+                if ((na <= 0.0 && mg <= 0.0) || pr <= 0.0) {
+                  lblNN->setText("Enter Na⁺ (or Mg²⁺) and primer concentrations to calculate.");
+                  return;
+                }
+                TmCalc::NNResult r = TmCalc::nearestNeighbor(seqStd, na, mg, pr);
+                if (!r.valid) {
+                  lblNN->setText("<span style='color:#a00'>Not available: " + QString::fromStdString(r.reason) + "</span>");
+                  return;
+                }
+                QString notes;
+                if (r.selfComplementary) notes += "<br><i>Self-complementary sequence (symmetry correction applied).</i>";
+                if (seqStd.size() > 60) notes += "<br><i>The nearest-neighbor model is reliable for oligonucleotides up to about 60 nt.</i>";
+                lblNN->setText(QString("<b>Tm (nearest-neighbor): %1 °C</b><br>"
+                                       "ΔH = %2 kcal/mol, ΔS = %3 cal/(K·mol) (salt-corrected), ΔG(37 °C) = %4 kcal/mol<br>"
+                                       "Monovalent-equivalent cation concentration: %5 mM%6")
+                               .arg(r.tm, 0, 'f', 1).arg(r.deltaH, 0, 'f', 1).arg(r.deltaS, 0, 'f', 1)
+                               .arg(r.deltaG37, 0, 'f', 1).arg(r.naEquivalentMM, 0, 'f', 1).arg(notes));
+              };
+              connect(spNa, &QDoubleSpinBox::valueChanged, nnBox, [updateNN](double) { updateNN(); });
+              connect(spMg, &QDoubleSpinBox::valueChanged, nnBox, [updateNN](double) { updateNN(); });
+              connect(spPrimer, &QDoubleSpinBox::valueChanged, nnBox, [updateNN](double) { updateNN(); });
+              nl->addWidget(nnBox);
               
               int winGC = std::min(15, totalLen);
               if (winGC > 1 && winGC % 2 == 0) winGC--;
@@ -1478,6 +1536,7 @@ void ContigWidget::applyTrimToTrack(AlignedTrack &tr, int trimLeftCount, int tri
 }
 
 void ContigWidget::trimLowQualityEnds(int minPhred) {
+  abortAlignment();
   pushUndoState();
   for (auto &tr : tracks) {
     auto &q = tr.originalData.qualityScores;
@@ -1511,6 +1570,7 @@ int ContigWidget::findFuzzyMatch(const QString& text, const QString& pattern, in
 }
 
 void ContigWidget::trimVectors() {
+  abortAlignment();
   pushUndoState();
   struct VectorSeq { QString name; QString seq; };
   const std::vector<VectorSeq> VECTORS = {
@@ -1611,6 +1671,7 @@ bool ContigWidget::saveProject(const QString &filePath) {
 }
 
 bool ContigWidget::loadProject(const QString &filePath) {
+  abortAlignment();
   QFile file(filePath);
   if (!file.open(QIODevice::ReadOnly)) return false;
 
@@ -1702,6 +1763,7 @@ bool ContigWidget::loadProject(const QString &filePath) {
   emit alignmentAlgorithmChanged(static_cast<int>(currentAlgorithm));
   emit translationTableChanged(translationTable);
   emit minIdentityThresholdChanged(minIdentityThreshold);
+  setModified(false);
   emit projectLoaded(filePath);
   return true;
 }
@@ -1796,6 +1858,7 @@ void ContigWidget::calculateConsensusAndSNPs() {
     }
     if (active >= 2 && baseFreq.size() > 1) snpColumns.push_back(col);
   }
+  computeColumnStats();
 }
 
 void ContigWidget::jumpNextSNP() {
@@ -1878,6 +1941,7 @@ void ContigWidget::setReference(const QString &seq) {
 }
 
 void ContigWidget::clearAll() {
+  abortAlignment();
   pushUndoState();
   referenceSeq.clear();
   consensusSeq.clear();
@@ -1898,98 +1962,283 @@ void ContigWidget::clearAll() {
 
 void ContigWidget::runAlignment() {
   if (tracks.empty()) return;
+  if (worker) {                 // уже идёт: отменяем и перезапускаем с актуальными данными
+    pendingRerun = true;
+    worker->cancel();
+    return;
+  }
+  startAlignmentJob(!suppressUndo);
+}
+
+void ContigWidget::startAlignmentJob(bool pushUndo, bool rerun) {
+  if (!rerun) jobPushedUndo = pushUndo;
+  if (pushUndo) pushUndoState();
+
+  AlignJobInput in;
+  in.algo = currentAlgorithm;
+  in.autoRC = autoRCEnabled;
+  in.refineIterations = refineIterations;
+  in.threads = threadCount;
+  in.minIdentity = minIdentityThreshold;
+  if (!isAutoReference) {
+    QString r = referenceSeq;
+    r.remove('-').remove(' ');
+    in.reference = r;   // пустой референс = автоматический
+  }
+  for (const auto &tr : tracks) {
+    AlignJobTrackIn t;
+    t.rawSeq = tr.originalData.sequence;
+    t.fixedOrientation = !autoRCEnabled || tr.overrideRC;
+    t.fixedRC = tr.alignment.isReverseComplement;
+    in.tracks.push_back(t);
+  }
+
+  jobTrackCount = static_cast<int>(tracks.size());
+  const quint64 gen = ++jobGeneration;
+  worker = new AlignWorker(std::move(in), this);
+  connect(worker, &AlignWorker::progress, this, [this, gen](int done, int total, const QString &stage) {
+    if (gen == jobGeneration) emit alignmentProgress(done, total, stage);
+  });
+  connect(worker, &QThread::finished, this, [this, gen]() {
+    if (gen == jobGeneration && worker) onAlignmentFinished();
+  });
+  emit alignmentStarted();
+  worker->start();
+}
+
+void ContigWidget::onAlignmentFinished() {
+  AlignWorker *w = worker;
+  if (!w) return;
+  w->wait();
+  worker = nullptr;
+  AlignJobOutput out = std::move(w->result);
+  w->deleteLater();
+
+  const bool rerun = pendingRerun;
+  pendingRerun = false;
+  if (rerun || static_cast<int>(tracks.size()) != jobTrackCount) {
+    if (!tracks.empty()) { startAlignmentJob(false, true); return; }
+    emit alignmentFinished(false);
+    return;
+  }
+
+  bool applied = false;
+  if (!out.cancelled && !out.reference.isEmpty()) {
+    applyAlignmentResult(out);
+    applied = true;
+  } else if (out.cancelled && jobPushedUndo && !undoStack.empty()) {
+    undoStack.pop_back();     // пользователь отменил — снимок "до выравнивания" не нужен
+  }
+  emit alignmentFinished(applied);
+}
+
+void ContigWidget::applyAlignmentResult(AlignJobOutput &out) {
   QString selectedTrackPath;
   if (selTrack >= 0 && selTrack < static_cast<int>(tracks.size()))
     selectedTrackPath = tracks[static_cast<size_t>(selTrack)].filePath;
-  CursorGuard cursorGuard; if (!suppressUndo) pushUndoState();
-  if (isAutoReference) { referenceSeq.clear(); consensusSeq.clear(); isAutoReference = false; for (auto &tr : tracks) { tr.alignment = AlignmentResult(); } }
-  
-  if (referenceSeq.isEmpty()) {
-    size_t maxLen = 0; int bestIdx = 0;
-    for (size_t i = 0; i < tracks.size(); ++i) {
-      QString cleanSeq = tracks[i].originalData.sequence; cleanSeq.remove('-').remove(' ');
-      if (cleanSeq.length() > maxLen) { maxLen = cleanSeq.length(); bestIdx = i; }
-    }
-    if (maxLen == 0) return;
-    QString seedSeq = tracks[bestIdx].originalData.sequence; seedSeq.remove('-').remove(' ');
-    if (autoRCEnabled) {
-      int fwdCount = 0, revCount = 0;
-      for (size_t i = 0; i < tracks.size(); ++i) {
-        if ((int)i == bestIdx || tracks[i].originalData.sequence.isEmpty()) continue;
-        QString cleanRead = tracks[i].originalData.sequence; cleanRead.remove('-').remove(' ');
-        AlignmentResult fwd = AlignmentEngine::alignSemiGlobal(seedSeq, cleanRead, currentAlgorithm, AlignmentEngine::RcMode::ForceForward);
-        AlignmentResult rev = AlignmentEngine::alignSemiGlobal(seedSeq, Ab1Parser::reverseComplement(cleanRead), currentAlgorithm, AlignmentEngine::RcMode::ForceForward);
-        if (rev.score > fwd.score) revCount++; else fwdCount++;
-      }
-      if (revCount > fwdCount) seedSeq = Ab1Parser::reverseComplement(seedSeq);
-    } else {
-      if (tracks[bestIdx].alignment.isReverseComplement) seedSeq = Ab1Parser::reverseComplement(seedSeq);
-    }
-    referenceSeq = seedSeq; isAutoReference = true;
-  } else { referenceSeq.remove('-').remove(' '); }
-  
-  if (referenceSeq.isEmpty()) return;
-  int N = referenceSeq.length();
-  struct TrackAlignData { std::vector<QString> refGapInsertions; std::vector<QChar> refBaseMatches; bool isRC = false; double identity = 0.0; int score = 0; };
-  std::vector<TrackAlignData> alignData(tracks.size());
-  
-  for (size_t k = 0; k < tracks.size(); ++k) {
-    QString cleanQuery = tracks[k].originalData.sequence; cleanQuery.remove('-').remove(' ');
-    alignData[k].refGapInsertions.assign(N + 1, QString());
-    alignData[k].refBaseMatches.assign(N, QChar('-'));
-    if (cleanQuery.isEmpty()) continue;
-    AlignmentEngine::RcMode mode = AlignmentEngine::RcMode::Auto;
-    if (!autoRCEnabled) mode = tracks[k].alignment.isReverseComplement ? AlignmentEngine::RcMode::ForceReverse : AlignmentEngine::RcMode::ForceForward;
-    else if (tracks[k].overrideRC) mode = tracks[k].alignment.isReverseComplement ? AlignmentEngine::RcMode::ForceReverse : AlignmentEngine::RcMode::ForceForward;
-    
-    AlignmentResult res = AlignmentEngine::alignSemiGlobal(referenceSeq, cleanQuery, currentAlgorithm, mode);
-    alignData[k].isRC = res.isReverseComplement; alignData[k].identity = res.identity; alignData[k].score = res.score;
-    QString aRef = res.alignedRef; QString aRead = res.alignedRead;
-    int len = std::min(aRef.length(), aRead.length());
-    int refIdx = 0;
-    for (int p = 0; p < len; ++p) {
-      QChar rCh = aRef[p].toUpper(); QChar qCh = aRead[p].toUpper();
-      if (rCh != '-') { if (refIdx < N) { alignData[k].refBaseMatches[refIdx] = qCh; refIdx++; } } 
-      else { int slot = std::min(refIdx, N); alignData[k].refGapInsertions[slot].append(qCh); }
-    }
+
+  MasterAlignment master = buildMaster(out.reference, out.tracks);
+  referenceSeq = master.masterRef;
+  isAutoReference = out.autoReference;
+
+  for (size_t k = 0; k < tracks.size() && k < out.tracks.size(); ++k) {
+    AlignedTrack &tr = tracks[k];
+    const AlignJobTrackOut &r = out.tracks[k];
+    if (!r.valid) { tr.alignment.alignedRead.clear(); continue; }
+    tr.alignment.alignedRef = master.masterRef;
+    tr.alignment.alignedRead = master.masterReads[k];
+    tr.alignment.isReverseComplement = r.isRC;
+    tr.alignment.identity = r.identity;
+    tr.alignment.score = r.score;
+    tr.inContig = (r.identity >= minIdentityThreshold);
   }
-  
-  std::vector<int> maxGapsPerSlot(N + 1, 0);
-  for (int s = 0; s <= N; ++s) {
-    int maxG = 0;
-    for (size_t k = 0; k < tracks.size(); ++k) maxG = std::max(maxG, (int)alignData[k].refGapInsertions[s].length());
-    maxGapsPerSlot[s] = maxG;
-  }
-  
-  QString masterRef = "";
-  masterRef.append(QString(maxGapsPerSlot[0], '-'));
-  for (int i = 0; i < N; ++i) { masterRef.append(referenceSeq[i]); masterRef.append(QString(maxGapsPerSlot[i + 1], '-')); }
-  referenceSeq = masterRef;
-  
-  for (size_t k = 0; k < tracks.size(); ++k) {
-    if (tracks[k].originalData.sequence.isEmpty()) continue;
-    QString masterRead = "";
-    QString ins0 = alignData[k].refGapInsertions[0];
-    masterRead.append(ins0); masterRead.append(QString(maxGapsPerSlot[0] - ins0.length(), '-'));
-    for (int i = 0; i < N; ++i) {
-      masterRead.append(alignData[k].refBaseMatches[i]);
-      QString ins = alignData[k].refGapInsertions[i + 1];
-      masterRead.append(ins); masterRead.append(QString(maxGapsPerSlot[i + 1] - ins.length(), '-'));
-    }
-    tracks[k].alignment.alignedRef = masterRef; tracks[k].alignment.alignedRead = masterRead;
-    tracks[k].alignment.isReverseComplement = alignData[k].isRC; tracks[k].alignment.identity = alignData[k].identity;
-    tracks[k].alignment.score = alignData[k].score; tracks[k].inContig = (alignData[k].identity >= minIdentityThreshold);
-  }
-  
+
   std::stable_sort(tracks.begin(), tracks.end(), [](const AlignedTrack &a, const AlignedTrack &b) { return a.inContig > b.inContig; });
+
   if (!selectedTrackPath.isEmpty()) {
-    const auto selected = std::find_if(tracks.begin(), tracks.end(), [&](const AlignedTrack &track) {
-      return track.filePath == selectedTrackPath;
-    });
-    if (selected != tracks.end()) selTrack = static_cast<int>(std::distance(tracks.begin(), selected));
+    const auto it = std::find_if(tracks.begin(), tracks.end(), [&](const AlignedTrack &t) { return t.filePath == selectedTrackPath; });
+    if (it != tracks.end()) selTrack = static_cast<int>(std::distance(tracks.begin(), it));
     else { selTrack = SEL_NONE; selStartCol = selEndCol = -1; }
   }
-  calculateConsensusAndSNPs(); searchMatches.clear(); currentMatchIdx = -1; fitToWindowHeight(); updateLayoutGeometry(); update();
+
+  calculateConsensusAndSNPs();
+  searchMatches.clear();
+  currentMatchIdx = -1;
+  fitToWindowHeight();
+  updateLayoutGeometry();
+  update();
+  markModified();
+}
+
+void ContigWidget::cancelAlignment() {
+  if (!worker) return;
+  pendingRerun = false;
+  worker->cancel();            // onAlignmentFinished() завершит очистку
+}
+
+// Синхронная остановка: нужна перед операциями, меняющими набор ридов.
+void ContigWidget::abortAlignment() {
+  if (!worker) return;
+  pendingRerun = false;
+  ++jobGeneration;             // сигналы старого задания игнорируются
+  worker->cancel();
+  worker->wait();
+  delete worker;
+  worker = nullptr;
+  if (jobPushedUndo && !undoStack.empty()) undoStack.pop_back();
+  emit alignmentFinished(false);
+}
+
+void ContigWidget::setRefineIterations(int n) {
+  n = std::clamp(n, 0, 10);
+  if (n == refineIterations) return;
+  refineIterations = n;
+  if (!tracks.empty()) { suppressUndo = true; runAlignment(); suppressUndo = false; }
+}
+
+void ContigWidget::setThreadCount(int n) { threadCount = std::clamp(n, 0, 256); }
+
+void ContigWidget::markModified() {
+  if (!modifiedFlag) { modifiedFlag = true; emit modifiedChanged(true); }
+}
+
+void ContigWidget::setModified(bool m) {
+  if (modifiedFlag == m) return;
+  modifiedFlag = m;
+  emit modifiedChanged(m);
+}
+
+void ContigWidget::computeColumnStats() {
+  ColumnStats st;
+  int cols = 0;
+  for (const auto &tr : tracks) if (tr.inContig) cols = std::max(cols, static_cast<int>(tr.alignment.alignedRead.length()));
+  st.totalCols = cols;
+  st.depth.assign(cols, 0);
+  st.meanQ.assign(cols, -1.0f);
+  std::vector<double> sumQ(cols, 0.0);
+  std::vector<int> cntQ(cols, 0);
+
+  for (const auto &tr : tracks) {
+    if (!tr.inContig) continue;
+    const QString &read = tr.alignment.alignedRead;
+    if (read.isEmpty()) continue;
+    const auto &q = tr.originalData.qualityScores;
+    const int qn = static_cast<int>(q.size());
+    const bool rc = tr.alignment.isReverseComplement;
+    int raw = 0;
+    for (int c = 0; c < read.length(); ++c) {
+      const QChar ch = read[c];
+      if (ch == '-') continue;
+      if (ch != ' ' && ch.isLetter()) {
+        st.depth[c]++;
+        const int qi = rc ? qn - 1 - raw : raw;
+        if (qi >= 0 && qi < qn) { sumQ[c] += q[static_cast<size_t>(qi)]; cntQ[c]++; }
+      }
+      ++raw;   // удалённое основание (' ') тоже занимает позицию в исходном риде
+    }
+  }
+
+  long long depthSum = 0;
+  for (int c = 0; c < cols; ++c) {
+    if (cntQ[c] > 0) st.meanQ[c] = static_cast<float>(sumQ[c] / cntQ[c]);
+    if (st.depth[c] > 0) {
+      st.coveredCols++;
+      depthSum += st.depth[c];
+      if (st.depth[c] >= 2) st.multiCols++;
+      if (st.meanQ[c] >= 0 && st.meanQ[c] < 20.0f) st.lowQualCols++;
+    }
+    st.maxDepth = std::max(st.maxDepth, st.depth[c]);
+  }
+  st.meanDepth = st.coveredCols > 0 ? static_cast<double>(depthSum) / st.coveredCols : 0.0;
+  stats = std::move(st);
+  emit statsChanged();
+}
+
+void ContigWidget::centerOnColumn(int col) {
+  const QWidget *w = this;
+  while (w) {
+    const QScrollArea *sa = qobject_cast<const QScrollArea*>(w);
+    if (sa) {
+      if (sa->horizontalScrollBar())
+        sa->horizontalScrollBar()->setValue(static_cast<int>(leftMarginWidth + col * scaleX - sa->viewport()->width() / 2));
+      break;
+    }
+    w = w->parentWidget();
+  }
+}
+
+bool ContigWidget::exportPdfReport(const QString &path, int basesPerLine) {
+  PrintExportOptions opt;
+  opt.outputType = PrintExportOptions::PdfFile;
+  opt.pdfPath = path;
+  opt.basesPerLine = std::clamp(basesPerLine, 10, 200);
+  opt.includeOrfA = showOrfA;
+  opt.includeOrfB = showOrfB;
+  {
+    QPdfWriter writer(path);
+    writer.setPageSize(QPageSize(QPageSize::A4));
+    writer.setPageOrientation(QPageLayout::Portrait);
+    writer.setResolution(300);
+    renderAlignmentToDevice(&writer, opt);
+  }
+  return QFileInfo(path).exists();
+}
+
+std::vector<int> ContigWidget::cutPositions(const RestEnzyme &enz, const QString &seq) const {
+  std::vector<int> cuts;
+  const int m = enz.motif.length(), n = seq.length();
+  if (m == 0 || n < m) return cuts;
+  for (int i = 0; i + m <= n; ++i) {
+    bool ok = true;
+    for (int j = 0; j < m && ok; ++j) if (!matchIupac(seq[i + j], enz.motif[j])) ok = false;
+    if (!ok) continue;
+    const int cut = i + enz.cutIdx;
+    if (cut > 0 && cut < n) cuts.push_back(cut);
+  }
+  return cuts;
+}
+
+void ContigWidget::showVirtualGelDialog() {
+  QString seq = consensusSeq.toUpper();
+  seq.remove('-').remove(' ');
+  if (seq.isEmpty()) {
+    QMessageBox::information(this, "Virtual Gel", "There is no consensus sequence yet. Open and align reads first.");
+    return;
+  }
+  if (restrictionEnzymes.empty()) {
+    QMessageBox::information(this, "Virtual Gel", "No restriction enzymes loaded in the database.");
+    return;
+  }
+
+  std::vector<GelEnzyme> list;
+  {
+    CursorGuard guard;
+    std::map<QString, GelEnzyme> byName;
+    for (const auto &enz : restrictionEnzymes) {
+      std::vector<int> cuts = cutPositions(enz, seq);
+      if (cuts.empty()) continue;
+      GelEnzyme &ge = byName[enz.name];
+      if (ge.name.isEmpty()) { ge.name = enz.name; ge.motif = enz.motif; }
+      ge.cuts.insert(ge.cuts.end(), cuts.begin(), cuts.end());
+      if (enz.enabled) ge.preselect = true;   // ферменты, отмеченные в "Select Enzymes to Display"
+    }
+    for (auto &kv : byName) {
+      std::sort(kv.second.cuts.begin(), kv.second.cuts.end());
+      kv.second.cuts.erase(std::unique(kv.second.cuts.begin(), kv.second.cuts.end()), kv.second.cuts.end());
+      list.push_back(std::move(kv.second));
+    }
+  }
+  if (list.empty()) {
+    QMessageBox::information(this, "Virtual Gel", "None of the loaded enzymes cuts the consensus sequence.");
+    return;
+  }
+  // Если отмечено слишком много ферментов (по умолчанию включены все), не отмечаем ни одного.
+  int pre = 0;
+  for (const auto &e : list) if (e.preselect) ++pre;
+  if (pre > 8) for (auto &e : list) e.preselect = false;
+
+  VirtualGelDialog dlg("Consensus", seq.length(), std::move(list), this);
+  dlg.exec();
 }
 
 int ContigWidget::getColFromX(int x) const {
@@ -2398,7 +2647,7 @@ void ContigWidget::mousePressEvent(QMouseEvent *event) {
     int x = event->position().x(), scrollX = getScrollX();
     if (std::abs(x - (scrollX + leftMarginWidth - 5)) <= 8) { isResizingMargin = true; return; }
     int c = getColFromX(x), t = getTrackFromY(event->position().y());
-    if (x < scrollX + leftMarginWidth && t >= 0) { dragSourceTrackIdx = t; return; }
+    if (x < scrollX + leftMarginWidth && t >= 0) { if (!isAligning()) dragSourceTrackIdx = t; return; }
     if (c >= 0 && t != SEL_NONE) { selTrack = t; selStartCol = c; selEndCol = c; isSelecting = true; update(); }
   }
 }
@@ -2425,6 +2674,7 @@ void ContigWidget::keyPressEvent(QKeyEvent *event) {
   if (event->matches(QKeySequence::Undo)) { undo(); return; }
   if (event->matches(QKeySequence::Redo)) { redo(); return; }
   if (event->matches(QKeySequence::Copy)) { copySelectedToClipboard(); return; }
+  if (isAligning()) return;   // правки во время выравнивания не принимаются
   if (selTrack == SEL_NONE || selStartCol < 0) return;
   int col = selStartCol; QString text = event->text().toUpper();
   
@@ -2553,6 +2803,7 @@ void ContigWidget::wheelEvent(QWheelEvent *event) {
 }
 
 void ContigWidget::contextMenuEvent(QContextMenuEvent *event) {
+  if (isAligning()) return;
   QMenu menu(this);
   QAction *copyAct = menu.addAction("📋 Copy Sequence (Ctrl+C)");
   connect(copyAct, &QAction::triggered, this, &ContigWidget::copySelectedToClipboard);
@@ -2616,6 +2867,8 @@ void ContigWidget::contextMenuEvent(QContextMenuEvent *event) {
   
   QAction *chooseResAct = menu.addAction("⚙ Select Enzymes to Display...");
   connect(chooseResAct, &QAction::triggered, this, &ContigWidget::showEnzymeSelectionDialog);
+  QAction *gelAct = menu.addAction("🧫 Virtual Gel...");
+  connect(gelAct, &QAction::triggered, this, &ContigWidget::showVirtualGelDialog);
   
   QAction *trimVecAct = menu.addAction("✂️ Trim Vectors (UniVec)");
   connect(trimVecAct, &QAction::triggered, this, &ContigWidget::trimVectors);

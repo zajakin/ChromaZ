@@ -30,6 +30,9 @@ public:
     bool isReverseComplement = false;
   };
   
+  // Идентичность по области перекрытия (0, если перекрытие слишком мало).
+  static double overlapIdentity(const QString &alignedRef, const QString &alignedRead);
+
   static AlignmentResult alignSemiGlobal(const QString &ref, const QString &read, 
                                          AlignmentAlgorithm algo = AlignmentAlgorithm::OverlapCAP3,
                                          RcMode rcMode = RcMode::Auto);

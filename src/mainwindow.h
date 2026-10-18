@@ -14,7 +14,17 @@
 #include <QMenu>
 #include <QCloseEvent>
 #include <vector>
+#include <functional>
+#include <QStringList>
+#include <QCommandLineParser>
+#include <QProgressBar>
+#include <QPushButton>
+#include <QSpinBox>
+#include <QDockWidget>
+#include <QTimer>
 #include "contigwidget.h"
+
+class MiniMapWidget;
 
 class MainWindow : public QMainWindow {
   Q_OBJECT
@@ -22,6 +32,13 @@ class MainWindow : public QMainWindow {
 public:
   explicit MainWindow(QWidget *parent = nullptr);
   ~MainWindow() override = default;
+  
+  // Загрузка файлов секвенирования (запускает выравнивание); возвращает true, если все файлы прочитаны.
+  bool loadFiles(const QStringList &files);
+  // Применяет параметры командной строки (см. cli.h) и выполняет запрошенные шаги.
+  void applyCommandLine(const QCommandLineParser &parser);
+  // Предлагает восстановить автосохранённую сессию (после аварийного завершения).
+  void maybeRestoreAutosave();
   
   private slots:
     void openFiles();
@@ -31,6 +48,8 @@ public:
   void findSequenceDialog();
   void updateVoiceActions();
   void showAboutDialog();
+  void saveProjectAs();
+  void showCliHelpDialog();
   
 protected:
   void closeEvent(QCloseEvent *event) override;
@@ -41,8 +60,39 @@ private:
   void createToolBars();
   void readSettings();
   void writeSettings();
+  void createCoverageDock();
+  bool openProjectPath(const QString &path);
+  bool doSaveProject(const QString &path);
+  bool maybeSave();
+  void updateWindowTitle();
+  void addRecent(const QString &path);
+  void openRecent(const QString &path);
+  void updateRecentMenu();
+  void clearRecent();
+  QString autosavePath() const;
+  void reportError(const QString &title, const QString &message);
+  void runNextCliStep();
   
   bool loadingSettings = false; // true во время readSettings(): игнорируем writeSettings()
+  bool settingsLocked = false;  // параметры командной строки не переписывают сохранённые настройки
+  bool batchMode = false;       // --quit: без диалогов, ошибки в stderr
+  bool cliFailed = false;
+  std::vector<std::function<void()>> cliSteps;
+  QString currentProjectPath;
+  QTimer *autosaveTimer = nullptr;
+  
+  QMenu *menuRecent = nullptr;
+  QProgressBar *progressBar = nullptr;
+  QLabel *progressLabel = nullptr;
+  QPushButton *btnCancelAlign = nullptr;
+  QDockWidget *coverageDock = nullptr;
+  MiniMapWidget *miniMap = nullptr;
+  QLabel *statsLabel = nullptr;
+  QSpinBox *refineSpin = nullptr;
+  QSpinBox *threadsSpin = nullptr;
+  QAction *actSaveProjAs = nullptr;
+  QAction *actVirtualGel = nullptr;
+  QAction *actCliHelp = nullptr;
   
   ContigWidget *contigWidget = nullptr;
   QScrollArea *scrollArea = nullptr;

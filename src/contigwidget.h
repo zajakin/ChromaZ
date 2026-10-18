@@ -9,11 +9,27 @@
 #include <QDropEvent>
 #include <QEvent>
 #include <vector>
+#include <QtGlobal>
 #include <QtTextToSpeech/QTextToSpeech>
 #include <QtTextToSpeech/QVoice>
 #include <QPagedPaintDevice>
 #include "ab1parser.h"
 #include "alignmentengine.h"
+
+class AlignWorker;
+struct AlignJobOutput;
+
+// Статистика по колонкам выравнивания (для миникарты и панели покрытия).
+struct ColumnStats {
+  std::vector<int> depth;      // число ридов контига, покрывающих колонку
+  std::vector<float> meanQ;    // средний Phred по колонке; -1 — нет данных о качестве
+  int maxDepth = 0;
+  double meanDepth = 0.0;      // среднее по покрытым колонкам
+  int totalCols = 0;
+  int coveredCols = 0;
+  int multiCols = 0;           // колонки с глубиной >= 2
+  int lowQualCols = 0;         // колонки со средним Phred < 20
+};
 
 static const int SEL_NONE = -100;
 static const int SEL_REF = -1;
@@ -86,6 +102,20 @@ class ContigWidget : public QWidget {
   
 public:
   explicit ContigWidget(QWidget *parent = nullptr);
+  ~ContigWidget() override;
+  
+  bool isAligning() const { return worker != nullptr; }
+  const ColumnStats &columnStats() const { return stats; }
+  const std::vector<int> &snpColumnList() const { return snpColumns; }
+  int leftMargin() const { return leftMarginWidth; }
+  double columnWidth() const { return scaleX; }
+  bool hasTracks() const { return !tracks.empty(); }
+  bool isModified() const { return modifiedFlag; }
+  void setModified(bool m);
+  int getRefineIterations() const { return refineIterations; }
+  int getThreadCount() const { return threadCount; }
+  void centerOnColumn(int col);
+  bool exportPdfReport(const QString &path, int basesPerLine = 60);
   
   void setReference(const QString &seq);
   bool addAb1Track(const QString &filePath, const Ab1Data &data);
@@ -121,6 +151,11 @@ public:
   void minIdentityThresholdChanged(double threshold);
   void speechRateChanged(double rate);
   void voiceChanged(const QVoice &voice);
+  void alignmentStarted();
+  void alignmentProgress(int done, int total, const QString &stage);
+  void alignmentFinished(bool applied);
+  void statsChanged();
+  void modifiedChanged(bool modified);
   
   public slots:
     void undo();
@@ -138,6 +173,10 @@ public:
   void trimVectors();
   void toggleRestrictionSites(bool enable);
   void showEnzymeSelectionDialog();
+  void showVirtualGelDialog();
+  void cancelAlignment();
+  void setRefineIterations(int n);
+  void setThreadCount(int n);
   
   void readSelectionAloud();
   void stopReading();
@@ -194,6 +233,13 @@ private:
   void loadRestrictionEnzymes();
   bool matchIupac(QChar seqChar, QChar motifChar) const;
   QString getSelectedSequence() const;
+  std::vector<int> cutPositions(const RestEnzyme &enz, const QString &ungappedSeq) const;
+  void computeColumnStats();
+  void markModified();
+  void startAlignmentJob(bool pushUndo, bool rerun = false);
+  void onAlignmentFinished();
+  void applyAlignmentResult(AlignJobOutput &out);
+  void abortAlignment();
   
   QString referenceSeq;
   QString consensusSeq;
@@ -206,6 +252,15 @@ private:
   
   bool isAutoReference = false;
   bool suppressUndo = false;
+  AlignWorker *worker = nullptr;
+  quint64 jobGeneration = 0;
+  bool pendingRerun = false;
+  bool jobPushedUndo = false;
+  int jobTrackCount = 0;
+  int refineIterations = 0;
+  int threadCount = 0;
+  bool modifiedFlag = false;
+  ColumnStats stats;
   std::vector<AlignedTrack> tracks;
   
   std::vector<WidgetState> undoStack;

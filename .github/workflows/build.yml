@@ -104,6 +104,9 @@ jobs:
   # -------------------------------------------------------------------
   build-windows:
     runs-on: windows-latest
+    env:
+      WIN_CERT_PFX_BASE64: ${{ secrets.WIN_CERT_PFX_BASE64 }}
+      WIN_CERT_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
 
     steps:
     - name: Checkout repository
@@ -142,14 +145,46 @@ jobs:
       run: |
         cmake --build build --config Release
 
-    - name: Deploy Qt Libraries & Build Installer
+    - name: Run unit tests
+      env:
+        QT_QPA_PLATFORM: offscreen
+      run: |
+        ctest --test-dir build -C Release --output-on-failure
+
+    - name: Deploy Qt Libraries
       shell: bash
       run: |
         mkdir -p win
         cp build/Release/ChromaZ.exe win/
         windeployqt win/ChromaZ.exe
+
+    - name: Sign ChromaZ.exe (if a certificate is configured)
+      if: ${{ env.WIN_CERT_PFX_BASE64 != '' }}
+      shell: pwsh
+      run: |
+        $pfx = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+        [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WIN_CERT_PFX_BASE64))
+        $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1).FullName
+        & $signtool sign /f $pfx /p $env:WIN_CERT_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 win\ChromaZ.exe
+        if ($LASTEXITCODE -ne 0) { throw "signtool failed" }
+        Remove-Item $pfx
+
+    - name: Build Installer
+      shell: bash
+      run: |
         makensis -DAPP_VERSION="${{ env.APP_VERSION }}" src/installer.nsi
         mv ChromaZ_Setup.exe ChromaZ_Windows_Install_${{ env.APP_VERSION }}.exe
+
+    - name: Sign installer (if a certificate is configured)
+      if: ${{ env.WIN_CERT_PFX_BASE64 != '' }}
+      shell: pwsh
+      run: |
+        $pfx = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+        [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WIN_CERT_PFX_BASE64))
+        $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1).FullName
+        & $signtool sign /f $pfx /p $env:WIN_CERT_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 "ChromaZ_Windows_Install_${{ env.APP_VERSION }}.exe"
+        if ($LASTEXITCODE -ne 0) { throw "signtool failed" }
+        Remove-Item $pfx
 
     - name: Upload Windows Artifact
       uses: actions/upload-artifact@v7
@@ -164,6 +199,13 @@ jobs:
   # -------------------------------------------------------------------
   build-macos:
     runs-on: macos-14
+    env:
+      MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
 
     steps:
     - name: Checkout repository
@@ -199,12 +241,61 @@ jobs:
       run: |
         cmake --build build --config Release -j$(sysctl -n hw.ncpu)
 
-    - name: Bundle Qt Frameworks & Create DMG
+    - name: Run unit tests
+      env:
+        QT_QPA_PLATFORM: offscreen
+      run: |
+        ctest --test-dir build -C Release --output-on-failure
+
+    - name: Bundle Qt Frameworks
       run: |
         APP_PATH=$(find build -name "ChromaZ.app" -type d | head -n 1)
         echo "Found bundle at: $APP_PATH"
-        $QT_ROOT_DIR/bin/macdeployqt "$APP_PATH" -dmg
-        find build -name "*.dmg" -exec mv {} ChromaZ_macOS_Install_${{ env.APP_VERSION }}.dmg \;
+        echo "APP_PATH=$APP_PATH" >> $GITHUB_ENV
+        $QT_ROOT_DIR/bin/macdeployqt "$APP_PATH"
+
+    - name: Import signing certificate (if configured)
+      if: ${{ env.MACOS_CERT_P12_BASE64 != '' }}
+      run: |
+        KEYCHAIN="$RUNNER_TEMP/chromaz-build.keychain-db"
+        KEYCHAIN_PASSWORD="$(uuidgen)"
+        echo "$MACOS_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+        security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+        security set-keychain-settings -lut 21600 "$KEYCHAIN"
+        security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+        security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+        security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+        security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+        rm -f "$RUNNER_TEMP/cert.p12"
+
+    - name: Sign app bundle (Developer ID, hardened runtime)
+      if: ${{ env.MACOS_CERT_P12_BASE64 != '' }}
+      run: |
+        # Сначала вложенный код (плагины, библиотеки, фреймворки), затем сам бандл.
+        find "$APP_PATH" -type f \( -name "*.dylib" -o -name "*.so" \) -print0 | \
+          xargs -0 -n1 codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY"
+        find "$APP_PATH/Contents/Frameworks" -maxdepth 1 -name "*.framework" -print0 | \
+          xargs -0 -n1 codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY"
+        codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$APP_PATH"
+        codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+    - name: Create DMG
+      run: |
+        DMG="ChromaZ_macOS_Install_${{ env.APP_VERSION }}.dmg"
+        hdiutil create -volname "ChromaZ" -srcfolder "$APP_PATH" -ov -format UDZO "$DMG"
+
+    - name: Sign, notarize and staple DMG (if configured)
+      if: ${{ env.MACOS_CERT_P12_BASE64 != '' }}
+      run: |
+        DMG="ChromaZ_macOS_Install_${{ env.APP_VERSION }}.dmg"
+        codesign --force --timestamp --sign "$MACOS_SIGN_IDENTITY" "$DMG"
+        if [ -n "$APPLE_ID" ] && [ -n "$APPLE_TEAM_ID" ] && [ -n "$APPLE_APP_PASSWORD" ]; then
+          xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+        else
+          echo "Apple notarization credentials are not configured: the DMG is signed but not notarized."
+        fi
 
     - name: Upload macOS Artifact
       uses: actions/upload-artifact@v7
@@ -229,6 +320,12 @@ jobs:
       with:
         path: dist
         merge-multiple: true
+
+    - name: Compute SHA-256 checksums
+      run: |
+        cd dist
+        sha256sum * > SHA256SUMS.txt
+        cat SHA256SUMS.txt
 
     - name: Create draft release with all installers
       uses: softprops/action-gh-release@v3

@@ -73,6 +73,8 @@ if(CMAKE_CROSSCOMPILING)
     endforeach()
 endif()
 
+find_package(Threads REQUIRED)
+
 add_executable(ChromaZ WIN32
     main.cpp
     mainwindow.cpp
@@ -83,6 +85,20 @@ add_executable(ChromaZ WIN32
     ab1parser.h
     alignmentengine.cpp
     alignmentengine.h
+    alignjob.cpp
+    alignjob.h
+    alignworker.h
+    msa.cpp
+    msa.h
+    tmcalc.cpp
+    tmcalc.h
+    gelmath.h
+    virtualgel.cpp
+    virtualgel.h
+    minimapwidget.cpp
+    minimapwidget.h
+    cli.cpp
+    cli.h
     resources.qrc
 )
 
@@ -96,7 +112,7 @@ if(APPLE)
     )
 endif()
 
-target_link_libraries(ChromaZ PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::TextToSpeech Qt6::PrintSupport)
+target_link_libraries(ChromaZ PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::TextToSpeech Qt6::PrintSupport Threads::Threads)
 
 enable_testing()
 
@@ -106,7 +122,14 @@ add_executable(ChromaZTests
     ab1parser.h
     alignmentengine.cpp
     alignmentengine.h
+    alignjob.cpp
+    alignjob.h
+    msa.cpp
+    msa.h
+    tmcalc.cpp
+    tmcalc.h
+    gelmath.h
 )
 
-target_link_libraries(ChromaZTests PRIVATE Qt6::Core Qt6::Test)
+target_link_libraries(ChromaZTests PRIVATE Qt6::Core Qt6::Test Threads::Threads)
 add_test(NAME CoreLogicTests COMMAND ChromaZTests)

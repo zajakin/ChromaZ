@@ -517,6 +517,8 @@ static AlignmentResult alignProgressiveClustal(const QString &ref, const QString
   return alignAffineGapBlock(ref, read);
 }
 
+double AlignmentEngine::overlapIdentity(const QString &a, const QString &b) { return ::overlapIdentity(a, b); }
+
 AlignmentResult AlignmentEngine::alignSemiGlobal(const QString &ref, const QString &read, AlignmentAlgorithm algo, RcMode rcMode) {
   auto alignFn = [algo](const QString &r, const QString &q) -> AlignmentResult {
     AlignmentResult res;

@@ -12,7 +12,18 @@
 #include <QLocale>
 #include <QSettings>
 #include <QSignalBlocker>
+#include <QDir>
+#include <QFile>
+#include <QStandardPaths>
+#include <QDateTime>
+#include <QDialog>
+#include <QPlainTextEdit>
+#include <QVBoxLayout>
+#include <QStatusBar>
 #include <cmath>
+#include <cstdio>
+#include "minimapwidget.h"
+#include "cli.h"
 
 #ifndef CHROMAZ_VERSION
 #define CHROMAZ_VERSION "1.0.0"
@@ -29,6 +40,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   setCentralWidget(scrollArea);
   
   createActions();
+  createCoverageDock();
   createMenus();
   createToolBars();
   
@@ -57,16 +69,61 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     }
   });
   
+  // Индикатор фонового выравнивания в строке состояния
+  progressLabel = new QLabel(this);
+  progressBar = new QProgressBar(this);
+  progressBar->setMaximumWidth(220);
+  progressBar->setTextVisible(true);
+  btnCancelAlign = new QPushButton("Cancel", this);
+  statusBar()->addPermanentWidget(progressLabel);
+  statusBar()->addPermanentWidget(progressBar);
+  statusBar()->addPermanentWidget(btnCancelAlign);
+  progressLabel->hide(); progressBar->hide(); btnCancelAlign->hide();
+  connect(btnCancelAlign, &QPushButton::clicked, contigWidget, &ContigWidget::cancelAlignment);
+  connect(contigWidget, &ContigWidget::alignmentStarted, this, [this]() {
+    progressLabel->setText("Aligning…");
+    progressBar->setRange(0, 0);   // "занят", пока не пришёл первый прогресс
+    progressLabel->show(); progressBar->show(); btnCancelAlign->show();
+  });
+  connect(contigWidget, &ContigWidget::alignmentProgress, this, [this](int done, int total, const QString &stage) {
+    if (total > 0) { progressBar->setRange(0, total); progressBar->setValue(done); }
+    progressLabel->setText(stage);
+  });
+  connect(contigWidget, &ContigWidget::alignmentFinished, this, [this](bool applied) {
+    progressLabel->hide(); progressBar->hide(); btnCancelAlign->hide();
+    statusBar()->showMessage(applied ? "Alignment complete" : "Alignment cancelled", 4000);
+    updateWindowTitle();
+    QTimer::singleShot(0, this, [this]() { runNextCliStep(); });
+  });
+  connect(contigWidget, &ContigWidget::modifiedChanged, this, [this](bool) { updateWindowTitle(); });
+  connect(contigWidget, &ContigWidget::projectLoaded, this, [this](const QString &path) {
+    if (path == autosavePath()) { currentProjectPath.clear(); }
+    else { currentProjectPath = path; addRecent(path); }
+    updateWindowTitle();
+  });
+
+  // Автосохранение сессии (раз в 2 минуты при наличии несохранённых изменений)
+  autosaveTimer = new QTimer(this);
+  autosaveTimer->setInterval(120000);
+  connect(autosaveTimer, &QTimer::timeout, this, [this]() {
+    if (batchMode || !contigWidget->hasTracks() || !contigWidget->isModified()) return;
+    if (contigWidget->saveProject(autosavePath())) statusBar()->showMessage("Session autosaved", 2000);
+  });
+  autosaveTimer->start();
+
   readSettings();
+  updateWindowTitle();
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
+  if (!maybeSave()) { event->ignore(); return; }
   writeSettings();
+  QFile::remove(autosavePath());   // чистое завершение — автосохранение больше не нужно
   QMainWindow::closeEvent(event);
 }
 
 void MainWindow::writeSettings() {
-  if (loadingSettings) return;
+  if (loadingSettings || settingsLocked) return;
   QSettings settings("ChromaZ", "ChromaZ");
   settings.setValue("geometry", saveGeometry());
   settings.setValue("windowState", saveState());
@@ -87,6 +144,8 @@ void MainWindow::writeSettings() {
   settings.setValue("orfB", contigWidget->isOrfBEnabled());
   settings.setValue("restrictionSites", contigWidget->isRestrictionSitesVisible());
   settings.setValue("iupacConsensus", contigWidget->isIupacConsensusEnabled());
+  settings.setValue("refineIterations", contigWidget->getRefineIterations());
+  settings.setValue("alignThreads", contigWidget->getThreadCount());
 }
 
 void MainWindow::readSettings() {
@@ -179,6 +238,16 @@ void MainWindow::readSettings() {
     bool v = settings.value("iupacConsensus", false).toBool();
     contigWidget->setConsensusIupac(v);
     if (actToggleIupac) actToggleIupac->setChecked(v);
+  }
+  if (settings.contains("refineIterations")) {
+    int v = settings.value("refineIterations", 0).toInt();
+    if (refineSpin) refineSpin->setValue(v);
+    contigWidget->setRefineIterations(v);
+  }
+  if (settings.contains("alignThreads")) {
+    int v = settings.value("alignThreads", 0).toInt();
+    if (threadsSpin) threadsSpin->setValue(v);
+    contigWidget->setThreadCount(v);
   }
   loadingSettings = false;
 }
@@ -388,6 +457,17 @@ void MainWindow::createActions() {
   actStopRead = new QAction("🔇 Stop", this);
   connect(actStopRead, &QAction::triggered, contigWidget, &ContigWidget::stopReading);
   
+  actSaveProjAs = new QAction("💾 Save Project As...", this);
+  actSaveProjAs->setShortcut(QKeySequence::SaveAs);
+  connect(actSaveProjAs, &QAction::triggered, this, &MainWindow::saveProjectAs);
+  
+  actVirtualGel = new QAction("🧫 Virtual Gel...", this);
+  actVirtualGel->setToolTip("Simulate an agarose gel of the consensus digested with the selected restriction enzymes");
+  connect(actVirtualGel, &QAction::triggered, contigWidget, &ContigWidget::showVirtualGelDialog);
+  
+  actCliHelp = new QAction("⌨ Command-line options...", this);
+  connect(actCliHelp, &QAction::triggered, this, &MainWindow::showCliHelpDialog);
+  
   actAbout = new QAction("ℹ About ChromaZ...", this);
   connect(actAbout, &QAction::triggered, this, &MainWindow::showAboutDialog);
 }
@@ -395,10 +475,13 @@ void MainWindow::createActions() {
 void MainWindow::createMenus() {
   QMenu *fileMenu = menuBar()->addMenu("&File");
   fileMenu->addAction(actOpen);
+  menuRecent = fileMenu->addMenu("🕘 Open Recent");
+  connect(menuRecent, &QMenu::aboutToShow, this, &MainWindow::updateRecentMenu);
   fileMenu->addAction(actClear);
   fileMenu->addSeparator();
   fileMenu->addAction(actOpenProj);
   fileMenu->addAction(actSaveProj);
+  fileMenu->addAction(actSaveProjAs);
   fileMenu->addSeparator();
   fileMenu->addAction(actExportFasta);
   fileMenu->addAction(actExportGenBank);
@@ -436,6 +519,8 @@ void MainWindow::createMenus() {
   viewMenu->addAction(actToggleRestr);
   viewMenu->addAction(actSelectEnzymes);
   viewMenu->addAction(actToggleIupac);
+  viewMenu->addSeparator();
+  viewMenu->addAction(coverageDock->toggleViewAction());
   
   QMenu *alignMenu = menuBar()->addMenu("&Alignment");
   QMenu *algoSub = alignMenu->addMenu("🧬 Algorithm");
@@ -448,6 +533,7 @@ void MainWindow::createMenus() {
   analysisMenu->addAction(actSelectEnzymes);
   analysisMenu->addAction(actBlast);
   analysisMenu->addAction(actProps);
+  analysisMenu->addAction(actVirtualGel);
   analysisMenu->addSeparator();
   analysisMenu->addAction(actPrevSnp);
   analysisMenu->addAction(actNextSnp);
@@ -480,6 +566,8 @@ void MainWindow::createMenus() {
   }
   
   QMenu *helpMenu = menuBar()->addMenu("&Help");
+  helpMenu->addAction(actCliHelp);
+  helpMenu->addSeparator();
   helpMenu->addAction(actAbout);
 }
 
@@ -573,6 +661,27 @@ void MainWindow::createToolBars() {
     writeSettings();
   });
   
+  alignBar->addWidget(new QLabel(" Refine: ", this));
+  refineSpin = new QSpinBox(this);
+  refineSpin->setRange(0, 10);
+  refineSpin->setToolTip("Consensus refinement rounds: re-align all reads to the consensus built from the previous round (0 = off)");
+  alignBar->addWidget(refineSpin);
+  connect(refineSpin, &QSpinBox::valueChanged, this, [this](int v) {
+    contigWidget->setRefineIterations(v);
+    writeSettings();
+  });
+  
+  alignBar->addWidget(new QLabel(" Threads: ", this));
+  threadsSpin = new QSpinBox(this);
+  threadsSpin->setRange(0, 64);
+  threadsSpin->setSpecialValueText("auto");
+  threadsSpin->setToolTip("Worker threads for read alignment (auto = number of CPU cores)");
+  alignBar->addWidget(threadsSpin);
+  connect(threadsSpin, &QSpinBox::valueChanged, this, [this](int v) {
+    contigWidget->setThreadCount(v);
+    writeSettings();
+  });
+  
   // 3. Панель масштабирования и отображения
   QToolBar *viewBar = addToolBar("View & Zoom");
   viewBar->setObjectName("ViewToolBar");
@@ -621,6 +730,7 @@ void MainWindow::createToolBars() {
   analysisBar->addSeparator();
   analysisBar->addAction(actBlast);
   analysisBar->addAction(actProps);
+  analysisBar->addAction(actVirtualGel);
   
   // 6. Панель голосовой диктовки
   QToolBar *speechBar = addToolBar("Text-to-Speech Controls");
@@ -693,28 +803,41 @@ void MainWindow::showAboutDialog() {
                                                                  .arg(CHROMAZ_VERSION));
 }
 
+void MainWindow::reportError(const QString &title, const QString &message) {
+  if (batchMode) {
+    std::fprintf(stderr, "ChromaZ: %s: %s\n", title.toLocal8Bit().constData(), message.toLocal8Bit().constData());
+    cliFailed = true;
+  } else {
+    QMessageBox::warning(this, title, message);
+  }
+}
+
 void MainWindow::openFiles() {
   QStringList files = QFileDialog::getOpenFileNames(
     this, "Open Sequencing / Alignment Files", "",
     "All Supported Files (*.ab1 *.scf *.fasta *.fa *.gb *.gbk *.fastq *.fq *.txt);;AB1 / SCF (*.ab1 *.scf);;FASTA / GenBank (*.fasta *.fa *.gb *.gbk);;FASTQ (*.fastq *.fq);;Text (*.txt);;All Files (*)");
   if (files.isEmpty()) return;
-  
+  loadFiles(files);
+}
+
+bool MainWindow::loadFiles(const QStringList &files) {
   int added = 0;
   QStringList failed;
-  
+
   auto addRecords = [&](const QString &file, const std::vector<SequenceRecord> &recs) {
     if (recs.empty()) { failed << QFileInfo(file).fileName(); return; }
     for (const auto &r : recs) {
       QString id = (recs.size() > 1) ? file + " [" + r.name + "]" : file;
       if (contigWidget->addAb1Track(id, r.data)) ++added;
     }
+    addRecent(file);
   };
-  
+
   for (const QString &file : files) {
     auto has = [&](const char *ext) { return file.endsWith(ext, Qt::CaseInsensitive); };
     if (has(".ab1") || has(".scf")) {
       Ab1Data d = Ab1Parser::parse(file);
-      if (d.isValid) { if (contigWidget->addAb1Track(file, d)) ++added; }
+      if (d.isValid) { if (contigWidget->addAb1Track(file, d)) { ++added; addRecent(file); } }
       else failed << QFileInfo(file).fileName() + (d.errorMessage.isEmpty() ? QString() : " (" + d.errorMessage + ")");
     } else if (has(".fasta") || has(".fa") || has(".gb") || has(".gbk")) {
       addRecords(file, SequenceFileParser::parseFastaOrGbRecords(file));
@@ -726,28 +849,276 @@ void MainWindow::openFiles() {
       failed << QFileInfo(file).fileName() + " (unsupported format)";
     }
   }
-  
-  if (!failed.isEmpty())
-    QMessageBox::warning(this, "Open Files", "Could not load:\n" + failed.join("\n"));
+
+  if (!failed.isEmpty()) reportError("Open Files", "Could not load:\n" + failed.join("\n"));
   if (added > 0) contigWidget->runAlignment();
+  updateWindowTitle();
+  return failed.isEmpty();
+}
+
+bool MainWindow::openProjectPath(const QString &path) {
+  if (!contigWidget->loadProject(path)) {
+    reportError("Open Project", "The project could not be loaded. The file may be unreadable, corrupted, or not a ChromaZ project:\n" + path);
+    return false;
+  }
+  return true;   // currentProjectPath и список недавних обновит сигнал projectLoaded
 }
 
 void MainWindow::openProject() {
+  if (!maybeSave()) return;
   const QString path = QFileDialog::getOpenFileName(
       this, "Open ChromaZ Project", QString(), "ChromaZ Project (*.ChromaZ)");
-  if (!path.isEmpty() && !contigWidget->loadProject(path)) {
-    QMessageBox::warning(this, "Open Project",
-                         "The project could not be loaded. The file may be unreadable, corrupted, or not a ChromaZ project.");
+  if (!path.isEmpty()) openProjectPath(path);
+}
+
+bool MainWindow::doSaveProject(const QString &path) {
+  if (!contigWidget->saveProject(path)) {
+    reportError("Save Project", "The project could not be saved to:\n" + path);
+    return false;
   }
+  currentProjectPath = path;
+  contigWidget->setModified(false);
+  addRecent(path);
+  updateWindowTitle();
+  return true;
 }
 
 void MainWindow::saveProject() {
-  const QString path = QFileDialog::getSaveFileName(
-      this, "Save ChromaZ Project", "project.ChromaZ", "ChromaZ Project (*.ChromaZ)");
-  if (!path.isEmpty() && !contigWidget->saveProject(path)) {
-    QMessageBox::warning(this, "Save Project",
-                         "The project could not be saved to:\n" + path);
+  if (currentProjectPath.isEmpty()) { saveProjectAs(); return; }
+  doSaveProject(currentProjectPath);
+}
+
+void MainWindow::saveProjectAs() {
+  const QString suggested = currentProjectPath.isEmpty() ? QString("project.ChromaZ") : currentProjectPath;
+  QString path = QFileDialog::getSaveFileName(this, "Save ChromaZ Project", suggested, "ChromaZ Project (*.ChromaZ)");
+  if (path.isEmpty()) return;
+  if (!path.endsWith(".ChromaZ", Qt::CaseInsensitive)) path += ".ChromaZ";
+  doSaveProject(path);
+}
+
+bool MainWindow::maybeSave() {
+  if (batchMode || !contigWidget->isModified() || !contigWidget->hasTracks()) return true;
+  const auto r = QMessageBox::question(this, "Unsaved changes",
+      "The workspace has unsaved changes. Save the project before continuing?",
+      QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
+  if (r == QMessageBox::Cancel) return false;
+  if (r == QMessageBox::Save) { saveProject(); return !contigWidget->isModified(); }
+  return true;
+}
+
+void MainWindow::updateWindowTitle() {
+  QString t = "ChromaZ — Sanger Alignment & Contig Editor";
+  if (!currentProjectPath.isEmpty()) t = QFileInfo(currentProjectPath).fileName() + " — ChromaZ";
+  if (contigWidget && contigWidget->isModified() && contigWidget->hasTracks()) t = "* " + t;
+  setWindowTitle(t);
+}
+
+// ---- недавние файлы ----
+void MainWindow::addRecent(const QString &path) {
+  if (settingsLocked || path.isEmpty()) return;
+  QSettings settings("ChromaZ", "ChromaZ");
+  QStringList list = settings.value("recentFiles").toStringList();
+  list.removeAll(path);
+  list.prepend(path);
+  while (list.size() > 10) list.removeLast();
+  settings.setValue("recentFiles", list);
+}
+
+void MainWindow::updateRecentMenu() {
+  menuRecent->clear();
+  QSettings settings("ChromaZ", "ChromaZ");
+  const QStringList list = settings.value("recentFiles").toStringList();
+  if (list.isEmpty()) {
+    QAction *empty = menuRecent->addAction("(empty)");
+    empty->setEnabled(false);
+    return;
   }
+  for (const QString &path : list) {
+    QAction *a = menuRecent->addAction(QFileInfo(path).fileName() + "   —   " + QDir::toNativeSeparators(path));
+    connect(a, &QAction::triggered, this, [this, path]() { openRecent(path); });
+  }
+  menuRecent->addSeparator();
+  connect(menuRecent->addAction("Clear list"), &QAction::triggered, this, &MainWindow::clearRecent);
+}
+
+void MainWindow::clearRecent() {
+  QSettings settings("ChromaZ", "ChromaZ");
+  settings.remove("recentFiles");
+}
+
+void MainWindow::openRecent(const QString &path) {
+  if (!QFileInfo::exists(path)) {
+    QSettings settings("ChromaZ", "ChromaZ");
+    QStringList list = settings.value("recentFiles").toStringList();
+    list.removeAll(path);
+    settings.setValue("recentFiles", list);
+    reportError("Open Recent", "The file no longer exists:\n" + path);
+    return;
+  }
+  if (path.endsWith(".ChromaZ", Qt::CaseInsensitive)) {
+    if (maybeSave()) openProjectPath(path);
+  } else {
+    loadFiles(QStringList() << path);
+  }
+}
+
+// ---- автосохранение ----
+QString MainWindow::autosavePath() const {
+  QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+  if (dir.isEmpty()) dir = QDir::tempPath();
+  QDir().mkpath(dir);
+  return dir + "/autosave.ChromaZ";
+}
+
+void MainWindow::maybeRestoreAutosave() {
+  const QFileInfo fi(autosavePath());
+  if (!fi.exists() || fi.size() == 0) return;
+  const auto r = QMessageBox::question(this, "Restore session",
+      QString("An autosaved session from %1 was found (ChromaZ may have closed unexpectedly).\nRestore it?")
+          .arg(QLocale().toString(fi.lastModified(), QLocale::ShortFormat)),
+      QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+  if (r == QMessageBox::Yes) {
+    if (contigWidget->loadProject(fi.absoluteFilePath())) {
+      currentProjectPath.clear();
+      contigWidget->setModified(true);   // восстановленная сессия не сохранена в обычный проект
+      updateWindowTitle();
+    } else {
+      reportError("Restore session", "The autosaved session could not be loaded.");
+      QFile::remove(fi.absoluteFilePath());
+    }
+  } else {
+    QFile::remove(fi.absoluteFilePath());
+  }
+}
+
+// ---- панель покрытия ----
+void MainWindow::createCoverageDock() {
+  coverageDock = new QDockWidget("Coverage and Mini-map", this);
+  coverageDock->setObjectName("CoverageDock");
+  QWidget *box = new QWidget(coverageDock);
+  QVBoxLayout *lay = new QVBoxLayout(box);
+  lay->setContentsMargins(4, 2, 4, 2);
+  lay->setSpacing(2);
+  miniMap = new MiniMapWidget(contigWidget, scrollArea, box);
+  statsLabel = new QLabel("No alignment", box);
+  lay->addWidget(miniMap, 1);
+  lay->addWidget(statsLabel);
+  coverageDock->setWidget(box);
+  addDockWidget(Qt::BottomDockWidgetArea, coverageDock);
+  coverageDock->toggleViewAction()->setText("🗺 Coverage and Mini-map");
+
+  connect(contigWidget, &ContigWidget::statsChanged, this, [this]() {
+    const ColumnStats &s = contigWidget->columnStats();
+    if (s.totalCols == 0 || s.maxDepth == 0) { statsLabel->setText("No alignment"); return; }
+    statsLabel->setText(QString("Columns: %1   |   Covered: %2 (%3%)   |   Mean depth: %4   |   Max depth: %5   |   Depth ≥ 2: %6%   |   Low-quality columns (Q<20): %7")
+        .arg(s.totalCols).arg(s.coveredCols).arg(100.0 * s.coveredCols / s.totalCols, 0, 'f', 1)
+        .arg(s.meanDepth, 0, 'f', 1).arg(s.maxDepth).arg(100.0 * s.multiCols / s.totalCols, 0, 'f', 1).arg(s.lowQualCols));
+  });
+}
+
+// ---- командная строка ----
+void MainWindow::showCliHelpDialog() {
+  QDialog dlg(this);
+  dlg.setWindowTitle("Command-line options");
+  dlg.resize(860, 640);
+  QVBoxLayout *l = new QVBoxLayout(&dlg);
+  QPlainTextEdit *edit = new QPlainTextEdit(Cli::helpText());
+  edit->setReadOnly(true);
+  edit->setFont(QFont("Monospace", 9));
+  edit->setLineWrapMode(QPlainTextEdit::NoWrap);
+  l->addWidget(edit);
+  QPushButton *btn = new QPushButton("Close");
+  connect(btn, &QPushButton::clicked, &dlg, &QDialog::accept);
+  l->addWidget(btn, 0, Qt::AlignRight);
+  dlg.exec();
+}
+
+void MainWindow::runNextCliStep() {
+  while (!cliSteps.empty()) {
+    if (contigWidget->isAligning()) return;       // продолжим по окончании выравнивания
+    auto step = cliSteps.front();
+    cliSteps.erase(cliSteps.begin());
+    step();
+  }
+}
+
+void MainWindow::applyCommandLine(const QCommandLineParser &p) {
+  const QStringList positional = p.positionalArguments();
+  bool any = !positional.isEmpty();
+  for (const QString &name : p.optionNames()) if (name != "help" && name != "h" && name != "version" && name != "v") any = true;
+  if (!any) return;
+
+  settingsLocked = true;     // запуск с параметрами не должен менять сохранённые настройки
+  batchMode = p.isSet("quit");
+  loadingSettings = true;
+
+  if (p.isSet("algorithm")) {
+    int a = Cli::parseAlgorithm(p.value("algorithm"));
+    if (a < 0) reportError("Command line", "Unknown algorithm: " + p.value("algorithm")); else algoCombo->setCurrentIndex(a);
+  }
+  if (p.isSet("min-identity")) {
+    bool ok = false; double v = p.value("min-identity").toDouble(&ok);
+    if (!ok || v < 0 || v > 100) reportError("Command line", "Invalid --min-identity value"); else identitySpin->setValue(v);
+  }
+  if (p.isSet("table")) {
+    int t = Cli::parseTable(p.value("table"));
+    if (t < 0) reportError("Command line", "Unknown genetic code: " + p.value("table")); else tableCombo->setCurrentIndex(t);
+  }
+  if (p.isSet("no-auto-rc")) actToggleAutoRc->setChecked(false);
+  if (p.isSet("iupac")) actToggleIupac->setChecked(true);
+  if (p.isSet("refine")) { bool ok = false; int v = p.value("refine").toInt(&ok); if (ok) refineSpin->setValue(v); else reportError("Command line", "Invalid --refine value"); }
+  if (p.isSet("threads")) { bool ok = false; int v = p.value("threads").toInt(&ok); if (ok) threadsSpin->setValue(v); else reportError("Command line", "Invalid --threads value"); }
+  if (p.isSet("no-orf-a")) actToggleOrfA->setChecked(false);
+  if (p.isSet("no-orf-b")) actToggleOrfB->setChecked(false);
+  if (p.isSet("restriction")) actToggleRestr->setChecked(true);
+  loadingSettings = false;
+
+  // Шаги выполняются по очереди; каждый, запускающий выравнивание, дожидается его окончания.
+  QString projectPath = p.value("project");
+  QStringList seqFiles;
+  for (const QString &f : positional) {
+    if (f.endsWith(".ChromaZ", Qt::CaseInsensitive)) { if (projectPath.isEmpty()) projectPath = f; }
+    else seqFiles << f;
+  }
+
+  if (!projectPath.isEmpty()) {
+    cliSteps.push_back([this, projectPath]() { openProjectPath(projectPath); });
+  } else if (p.isSet("reference")) {
+    const QString refPath = p.value("reference");
+    cliSteps.push_back([this, refPath]() {
+      auto recs = SequenceFileParser::parseFastaOrGbRecords(refPath);
+      if (recs.empty()) reportError("Command line", "Could not read the reference file: " + refPath);
+      else contigWidget->setReference(recs[0].data.sequence);
+    });
+  }
+  if (!seqFiles.isEmpty()) cliSteps.push_back([this, seqFiles]() { loadFiles(seqFiles); });
+
+  if (p.isSet("trim-quality")) {
+    bool ok = false; int q = p.value("trim-quality").toInt(&ok);
+    if (!ok || q < 1 || q > 60) reportError("Command line", "Invalid --trim-quality value");
+    else cliSteps.push_back([this, q]() { contigWidget->trimLowQualityEnds(q); });
+  }
+  if (p.isSet("trim-vectors")) cliSteps.push_back([this]() { contigWidget->trimVectors(); });
+
+  auto checkOutput = [this](const QString &path, const char *what) {
+    if (QFileInfo(path).exists()) std::printf("ChromaZ: wrote %s: %s\n", what, path.toLocal8Bit().constData());
+    else reportError("Export", QString("Could not write ") + what + ": " + path);
+  };
+  if (p.isSet("export-fasta")) { const QString f = p.value("export-fasta"); cliSteps.push_back([this, f, checkOutput]() { contigWidget->exportConsensusFasta(f); checkOutput(f, "FASTA"); }); }
+  if (p.isSet("export-gbk"))   { const QString f = p.value("export-gbk");   cliSteps.push_back([this, f, checkOutput]() { contigWidget->exportConsensusGenBank(f); checkOutput(f, "GenBank"); }); }
+  if (p.isSet("export-png"))   { const QString f = p.value("export-png");   cliSteps.push_back([this, f, checkOutput]() { contigWidget->exportViewImage(f); checkOutput(f, "PNG"); }); }
+  if (p.isSet("export-pdf")) {
+    const QString f = p.value("export-pdf");
+    int bases = p.isSet("pdf-bases") ? p.value("pdf-bases").toInt() : 60;
+    cliSteps.push_back([this, f, bases, checkOutput]() { contigWidget->exportPdfReport(f, bases); checkOutput(f, "PDF"); });
+  }
+  if (p.isSet("save-project")) {
+    const QString f = p.value("save-project");
+    cliSteps.push_back([this, f]() { if (contigWidget->saveProject(f)) std::printf("ChromaZ: wrote project: %s\n", f.toLocal8Bit().constData()); else reportError("Save Project", "Could not save: " + f); });
+  }
+  if (batchMode) cliSteps.push_back([this]() { qApp->exit(cliFailed ? 1 : 0); });
+
+  QTimer::singleShot(0, this, [this]() { runNextCliStep(); });
 }
 
 void MainWindow::findSequenceDialog() {
