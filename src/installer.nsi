@@ -5,9 +5,6 @@
 !define PUBLISHER "Pawel Zayakin"
 !define EXE_NAME "ChromaZ.exe"
 !define ICON_NAME "app.ico"
-!if /FileExists "${ICON_NAME}"
-  !define HAVE_ICON
-!endif
 
 Name "${APP_NAME}"
 OutFile "..\ChromaZ_Setup.exe"
@@ -16,10 +13,8 @@ InstallDirRegKey HKLM "Software\${APP_NAME}" "Install_Dir"
 RequestExecutionLevel admin
 
 ; Задаем иконку для файла инсталлятора и деинсталлятора
-!ifdef HAVE_ICON
-  Icon "${ICON_NAME}"
-  UninstallIcon "${ICON_NAME}"
-!endif
+Icon "${ICON_NAME}"
+UninstallIcon "${ICON_NAME}"
 
 Page directory
 Page instfiles
@@ -34,9 +29,7 @@ Section "MainSection" SEC01
     File /r "..\win\*.*"
     
     ; Копируем иконку приложения
-!ifdef HAVE_ICON
     File "${ICON_NAME}"
-!endif
     
     ; Запись в реестр для отмены установки (Добавление в "Программы и компоненты")
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayName" "${APP_NAME}"

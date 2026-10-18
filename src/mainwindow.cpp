@@ -49,6 +49,7 @@ void MainWindow::closeEvent(QCloseEvent *event) {
 }
 
 void MainWindow::writeSettings() {
+  if (loadingSettings) return;
   QSettings settings("ChromaZ", "ChromaZ");
   settings.setValue("geometry", saveGeometry());
   settings.setValue("windowState", saveState());
@@ -72,6 +73,9 @@ void MainWindow::writeSettings() {
 }
 
 void MainWindow::readSettings() {
+  // Каждое восстановленное значение переключает QAction/QComboBox, а их обработчики вызывают
+  // writeSettings() — без этого флага ещё не прочитанные ключи затирались бы значениями по умолчанию.
+  loadingSettings = true;
   QSettings settings("ChromaZ", "ChromaZ");
   if (settings.contains("geometry")) {
     restoreGeometry(settings.value("geometry").toByteArray());
@@ -159,6 +163,7 @@ void MainWindow::readSettings() {
     contigWidget->setConsensusIupac(v);
     if (actToggleIupac) actToggleIupac->setChecked(v);
   }
+  loadingSettings = false;
 }
 
 void MainWindow::createActions() {

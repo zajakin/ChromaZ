@@ -43,13 +43,13 @@ jobs:
         apt-get update
         apt-get install -y qt6-base-dev qt6-base-dev-tools libqt6widgets6 libqt6gui6 libqt6core6 \
                            qt6-speech-dev qt6-speech-speechd-plugin speech-dispatcher libqt6printsupport6 \
-                           cmake make build-essential librsvg2-bin imagemagick ca-certificates
+                           cmake make build-essential librsvg2-bin ca-certificates
 
         rsvg-convert -f png -w 256 -h 256 src/app.svg -o chromaz.png
-        convert chromaz.png src/app.ico
 
         cmake -B build-linux -S src -DCMAKE_BUILD_TYPE=Release -DAPP_VERSION="$VER"
         cmake --build build-linux -j$(nproc)
+        QT_QPA_PLATFORM=offscreen ctest --test-dir build-linux --output-on-failure
 
         PKG_DIR="ChromaZ_Linux_Install_${VER}_amd64"
         mkdir -p "$PKG_DIR/DEBIAN" "$PKG_DIR/usr/bin" "$PKG_DIR/usr/share/applications" "$PKG_DIR/usr/share/pixmaps"
@@ -98,14 +98,6 @@ jobs:
         path: ChromaZ_Linux_Install_${{ env.APP_VERSION }}_amd64.deb
         retention-days: 30
 
-    - name: "Upload Linux to GitHub Draft Release (on Tag)"
-      uses: softprops/action-gh-release@v3
-      if: startsWith(github.ref, 'refs/tags/')
-      with:
-        draft: true
-        files: ChromaZ_Linux_Install_${{ env.APP_VERSION }}_amd64.deb
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # -------------------------------------------------------------------
   # 2. WINDOWS (.exe) BUILD ON WINDOWS RUNNER
@@ -166,14 +158,6 @@ jobs:
         path: ChromaZ_Windows_Install_${{ env.APP_VERSION }}.exe
         retention-days: 30
 
-    - name: "Upload Windows to GitHub Draft Release (on Tag)"
-      uses: softprops/action-gh-release@v3
-      if: startsWith(github.ref, 'refs/tags/')
-      with:
-        draft: true
-        files: ChromaZ_Windows_Install_${{ env.APP_VERSION }}.exe
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # -------------------------------------------------------------------
   # 3. MACOS (.dmg) BUILD ON MACOS RUNNER (UNIVERSAL 2)
@@ -229,11 +213,27 @@ jobs:
         path: ChromaZ_macOS_Install_${{ env.APP_VERSION }}.dmg
         retention-days: 30
 
-    - name: "Upload macOS to GitHub Draft Release (on Tag)"
+  # -------------------------------------------------------------------
+  # 4. ЕДИНЫЙ DRAFT-РЕЛИЗ (создаётся один раз, после успешной сборки всех платформ)
+  # -------------------------------------------------------------------
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Download all installers
+      uses: actions/download-artifact@v5
+      with:
+        path: dist
+        merge-multiple: true
+
+    - name: Create draft release with all installers
       uses: softprops/action-gh-release@v3
-      if: startsWith(github.ref, 'refs/tags/')
       with:
         draft: true
-        files: ChromaZ_macOS_Install_${{ env.APP_VERSION }}.dmg
+        files: dist/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

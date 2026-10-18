@@ -41,6 +41,8 @@ private:
   void readSettings();
   void writeSettings();
   
+  bool loadingSettings = false; // true во время readSettings(): игнорируем writeSettings()
+  
   ContigWidget *contigWidget = nullptr;
   QScrollArea *scrollArea = nullptr;
   

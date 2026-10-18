@@ -59,8 +59,7 @@ if(CMAKE_CROSSCOMPILING)
     endif()
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets TextToSpeech PrintSupport)
-find_package(Qt6 OPTIONAL_COMPONENTS Test)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Test TextToSpeech PrintSupport)
 
 if(CMAKE_CROSSCOMPILING)
     foreach(qt_target Qt6::Core Qt6::Gui Qt6::Widgets Qt6::TextToSpeech Qt6::PrintSupport)
@@ -99,16 +98,15 @@ endif()
 
 target_link_libraries(ChromaZ PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::TextToSpeech Qt6::PrintSupport)
 
-# Тесты собираются только если есть Qt6::Test и сам файл tests/test_main.cpp
-if(TARGET Qt6::Test AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_main.cpp")
-    enable_testing()
-    add_executable(ChromaZTests
-        tests/test_main.cpp
-        ab1parser.cpp
-        ab1parser.h
-        alignmentengine.cpp
-        alignmentengine.h
-    )
-    target_link_libraries(ChromaZTests PRIVATE Qt6::Core Qt6::Test)
-    add_test(NAME CoreLogicTests COMMAND ChromaZTests)
-endif()
+enable_testing()
+
+add_executable(ChromaZTests
+    tests/test_main.cpp
+    ab1parser.cpp
+    ab1parser.h
+    alignmentengine.cpp
+    alignmentengine.h
+)
+
+target_link_libraries(ChromaZTests PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME CoreLogicTests COMMAND ChromaZTests)

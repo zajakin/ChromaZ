@@ -39,7 +39,7 @@ Pre-compiled standalone installers are available on the [Releases](https://githu
   * **Banded DP** — Banded dynamic programming for long reads.
   * **Wavefront Alignment (WFA)** — Stepwise wavefront error-expansion algorithm.
   * **Internal Clustal-style** — Built-in affine-gap (Gotoh) pairwise alignment of each read against the contig/reference, merged into a multiple alignment (no external CLI dependencies).
-* **Auto-Contig & Reference Support**: Automatic seed selection based on the most representative read, or custom reference sequence loading (FASTA/GenBank).
+* **Auto-Contig & Reference Support**: Automatic seed selection (the longest read), or custom reference sequence loading (FASTA/GenBank).
 * **Reverse Complement Detection (Auto RC)**: Automatic strand orientation and alignment for complementary reads (`[RC]`) with manual toggle option.
 
 ---
@@ -54,6 +54,7 @@ Pre-compiled standalone installers are available on the [Releases](https://githu
 
 ### ✂️ Restriction Analysis & Vector Trimming
 * **REBASE Database Integration**: Built-in support for the commercial REBASE restriction enzyme database (`bionetc.txt` with ~800 enzymes) with automatic build-time retrieval and fallback to Qt resources.
+* **Enzyme Selection**: Choose which enzymes are displayed (filterable checklist, choice is remembered between sessions); sites of several enzymes at one position are merged into a single label.
 * **Cleavage Site Visualization**: Real-time rendering of restriction cut positions with enzyme labels angled above the consensus track, supporting degenerate IUPAC recognition sites and Type IIS shifted cutters (e.g., BsaI).
 * **UniVec Vector Trimming**: 1-click trimming of cloning vector backbones, sequencing primers, and adapters (M13, T7, SP6, etc.) from read ends using fuzzy pattern matching.
 
@@ -66,7 +67,7 @@ Pre-compiled standalone installers are available on the [Releases](https://githu
 ---
 
 ### 🔬 Molecular Biology & PCR Utilities
-* **PCR Primer Melting Temperature ($T_m$)**: Instant estimation of primer $T_m$ and GC% for selected segments via Wallace rule and nearest-neighbor approximation.
+* **PCR Primer Melting Temperature ($T_m$)**: Estimation of $T_m$ and GC% for the selected segment (Wallace rule for < 14 nt, basic GC-content formula for longer oligos); shown in the *Properties* window.
 * **1-Click NCBI BLASTn**: Send selected sequences or consensus directly to NCBI BLAST in your default web browser with query parameters pre-filled.
 * **Physicochemical Properties & Protein Graphs**:
   * **GC Profile**: Interactive sliding-window curve of GC content across selected regions.
@@ -89,7 +90,10 @@ Pre-compiled standalone installers are available on the [Releases](https://githu
 * **Keyboard Sequence Editing**: Direct base substitution (A, C, G, T, N, `-`), insertion, and deletion with automatic trace coordinate recalculation.
 * **Full Undo / Redo**: Multi-step history stack (`Ctrl+Z` / `Ctrl+Y` or `Ctrl+Shift+Z`) up to 100 actions.
 * **SNP Navigation**: Single Nucleotide Polymorphism detection with quick jumping controls (`◀ SNP` / `SNP ▶`).
-* **Fast Sequence Search**: Substring match highlighting with automatic viewport auto-scrolling.
+* **Fast Sequence Search**: Substring match highlighting with automatic viewport auto-scrolling; toolbar search box with *Find ◀ / ▶*.
+* **Deleted Bases**: Deleting a base keeps its slot (shown blank, can be restored by typing a letter) until the next re-alignment or trimming, which commits the deletion.
+* **Persistent Settings**: Window layout, algorithm, identity threshold, genetic code, ORF/restriction/IUPAC toggles and speech settings are restored on start.
+* **Clear Workspace**: One-click reset of all loaded tracks.
 * **Drag & Drop**: Track reordering via drag-and-drop and direct file loading onto the viewer.
 
 ---
@@ -101,7 +105,7 @@ Pre-compiled standalone installers are available on the [Releases](https://githu
 * **FASTA Export**: Export generated consensus sequence.
 * **PDF Export**: Multi-page PDF report generation with configurable bases per line.
 * **PNG Export**: Save current alignment view as high-resolution raster images.
-* **`.ChromaZ` Projects**: Save and load complete workspace states (strand orientations, gaps, edits, and undo history) in JSON format.
+* **`.ChromaZ` Projects**: Save and load workspace states (reads, traces, strand orientations, gaps and edits) in JSON format.
 
 ---
 
@@ -131,7 +135,7 @@ Pre-compiled standalone installers are available on the [Releases](https://githu
 | **Ctrl + F** | Find sequence |
 | **Ctrl + Mouse Wheel** | Zoom Y-axis (Trace peak height) |
 | **Mouse Wheel** | Zoom X-axis (Base horizontal spacing) |
-| **Right Click Menu** | BLASTn, $T_m$ calc, properties graph, TTS readout, GenBank export |
+| **Right Click Menu** | BLASTn, properties & graphs (incl. $T_m$), TTS readout, GenBank export, enzyme selection |
 
 ---
 
