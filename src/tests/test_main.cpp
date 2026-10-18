@@ -28,7 +28,7 @@ QByteArray buildScf(bool v3, const ScfSample &s) {
   const int S = 40, B = s.bases.length();
   const quint32 samplesOff = 128, samplesBytes = S * 4 * 2;
   const quint32 basesOff = samplesOff + samplesBytes;
-  const quint32 basesBytes = v3 ? B * 18 : B * 12;
+  const quint32 basesBytes = B * 12;   // v2 и v3 занимают одинаковый объём
   QByteArray b;
   put32(b, 0x2e736366); put32(b, S); put32(b, samplesOff); put32(b, B);
   put32(b, 0); put32(b, 0); put32(b, basesOff);

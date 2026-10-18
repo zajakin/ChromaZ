@@ -121,7 +121,7 @@ Ab1Data Ab1Parser::parseScf(const QString &filePath) {
     return data;
   }
   if (samplesOff + numSamples * 4 * sampleSize > size) { data.errorMessage = "Truncated SCF samples"; return data; }
-  const qint64 baseBytes = isV3 ? numBases * 18 : numBases * 12;
+  const qint64 baseBytes = numBases * 12; // и v2, и v3: 4 (пик) + 4 (вероятности) + 1 (основание) + 3 (резерв) на основание
   if (basesOff + baseBytes > size) { data.errorMessage = "Truncated SCF bases"; return data; }
 
   std::vector<int> *traces[4] = {&data.traceA, &data.traceC, &data.traceG, &data.traceT};
