@@ -260,6 +260,28 @@ class TestChromaZ : public QObject {
     QCOMPARE(ref2, QStringLiteral("ACGT-ACGT"));
   }
 
+  void testGapsInSourceSequenceDoNotShiftDeletedBases() {
+    // Рид из FASTA с гэпами ('-') и удалённым основанием: гэпы не входят в выравнивание
+    // и не должны сдвигать позицию пустого слота.
+    const QString g = randomDna(3, 500);
+    QString r = g.mid(100, 300);
+    r.insert(50, QStringLiteral("--"));
+    r[120] = ' ';
+    AlignJobInput in;
+    AlignJobTrackIn a, b;
+    a.rawSeq = g; b.rawSeq = r;
+    in.tracks = {a, b};
+    std::atomic<bool> cancel{false};
+    AlignJobOutput out = runAlignJob(in, cancel);
+    QVERIFY(!out.cancelled);
+    QString noGaps = out.tracks[1].alignedRead;
+    noGaps.remove('-');
+    QString expected = r;
+    expected.remove('-');
+    QCOMPARE(noGaps, expected);
+    QCOMPARE(noGaps.indexOf(QLatin1Char(' ')), 118);   // позиция слота не сместилась из-за двух '-' в начале
+  }
+
   void testRefinementProducesConsensusReference() {
     const QString g = randomDna(5, 700);
     AlignJobInput in;

@@ -676,6 +676,10 @@ bool ContigWidget::addAb1Track(const QString &filePath, const Ab1Data &data) {
   track.filePath = filePath;
   track.fileName = QFileInfo(filePath).fileName();
   track.originalData = data;
+  // Гэпы из FASTA/TXT не относятся к риду: убираем их, чтобы индексы исходной последовательности
+  // совпадали с основаниями в выравнивании (у хроматограмм и FASTQ '-' в последовательности нет).
+  if (track.originalData.qualityScores.empty() && track.originalData.basePositions.empty())
+    track.originalData.sequence.remove('-');
   tracks.push_back(track);
   fitToWindowHeight();
   updateLayoutGeometry();

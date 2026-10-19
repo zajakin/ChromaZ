@@ -52,6 +52,7 @@ void reinsertDeletedBases(QString &alignedRef, QString &alignedRead, const QStri
   std::string rf = alignedRef.toStdString(), rd = alignedRead.toStdString();
   size_t p = 0;
   for (char ch : raw) {
+    if (ch == '-') continue;   // гэпы исходного файла (FASTA) не входили в выравнивание — см. cleanSeq()
     if (ch == ' ') {
       if (p < rd.size() && rd[p] == '-') { rd[p] = ' '; ++p; }      // занимаем соседний гэп
       else { rd.insert(p, 1, ' '); rf.insert(p, 1, '-'); ++p; }     // новая колонка
