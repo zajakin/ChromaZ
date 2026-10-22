@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>chromaz</id>
+    <version>[[VERSION]]</version>
+    <packageSourceUrl>https://github.com/zajakin/ChromaZ</packageSourceUrl>
+    <owners>Pawel Zayakin</owners>
+    <title>ChromaZ</title>
+    <authors>Pawel Zayakin</authors>
+    <projectUrl>https://github.com/zajakin/ChromaZ</projectUrl>
+    <iconUrl>https://raw.githubusercontent.com/zajakin/ChromaZ/main/chromaz.png</iconUrl>
+    <copyright>2026 Pawel Zayakin</copyright>
+    <licenseUrl>https://github.com/zajakin/ChromaZ/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <projectSourceUrl>https://github.com/zajakin/ChromaZ</projectSourceUrl>
+    <docsUrl>https://github.com/zajakin/ChromaZ/blob/main/README.md</docsUrl>
+    <bugTrackerUrl>https://github.com/zajakin/ChromaZ/issues</bugTrackerUrl>
+    <tags>chromaz sanger sequencing ab1 scf chromatogram dna alignment contig bioinformatics</tags>
+    <summary>Sanger chromatogram viewer, alignment and contig editor</summary>
+    <description><![CDATA[
+ChromaZ is a cross-platform desktop application for contig assembly, Sanger sequencing chromatogram visualization (.ab1 and .scf), multiple sequence alignment, restriction mapping, and bioinformatics analysis of nucleotide and amino acid sequences.
+    ]]></description>
+    <releaseNotes>https://github.com/zajakin/ChromaZ/releases</releaseNotes>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

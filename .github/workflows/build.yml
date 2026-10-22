@@ -107,6 +107,7 @@ jobs:
     env:
       WIN_CERT_PFX_BASE64: ${{ secrets.WIN_CERT_PFX_BASE64 }}
       WIN_CERT_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
+      CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
 
     steps:
     - name: Checkout repository
@@ -193,6 +194,52 @@ jobs:
         path: ChromaZ_Windows_Install_${{ env.APP_VERSION }}.exe
         retention-days: 30
 
+    # -----------------------------------------------------------------
+    # Сборка и авто-публикация пакета Chocolatey
+    # -----------------------------------------------------------------
+    - name: Build & Publish Chocolatey Package
+      shell: pwsh
+      run: |
+        $ver = "${{ env.APP_VERSION }}"
+        $chocoVer = $ver.Replace("-", ".")
+        $installer = "ChromaZ_Windows_Install_${ver}.exe"
+
+        # 1. Считаем хэш собранного Windows-инсталлятора
+        $hash = (Get-FileHash $installer -Algorithm SHA256).Hash
+        Write-Host "Installer SHA256: $hash"
+
+        # 2. Определяем точный URL загрузки из GitHub Releases
+        $tag = "${{ github.ref_name }}"
+        if (-not $tag.StartsWith("v")) { $tag = "v" + $ver }
+        $url = "https://github.com/zajakin/ChromaZ/releases/download/$tag/$installer"
+
+        # 3. Подставляем реальные данные в шаблоны
+        $nuspec = "chocolatey/chromaz.nuspec"
+        $installScript = "chocolatey/tools/chocolateyInstall.ps1"
+
+        (Get-Content $nuspec -Raw) -replace '\[\[VERSION\]\]', $chocoVer | Set-Content $nuspec -Encoding UTF8
+        (Get-Content $installScript -Raw) `
+            -replace '\[\[URL64\]\]', $url `
+            -replace '\[\[CHECKSUM\]\]', $hash | Set-Content $installScript -Encoding UTF8
+
+        # 4. Собираем .nupkg
+        choco pack $nuspec --outputdirectory .
+
+        # 5. Публикуем в Chocolatey при наличии секрета и тега
+        if ($env:CHOCO_API_KEY -and $env:GITHUB_REF.StartsWith('refs/tags/')) {
+            Write-Host "Pushing package to Chocolatey..."
+            choco push (Get-Item *.nupkg).FullName --api-key $env:CHOCO_API_KEY --source https://push.chocolatey.org/
+        } else {
+            Write-Host "Skipping automatic push to Chocolatey (tag or CHOCO_API_KEY is not set)."
+        }
+
+    - name: Upload Chocolatey Artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: ChromaZ-Chocolatey-Package
+        path: "*.nupkg"
+        retention-days: 30
+
 
   # -------------------------------------------------------------------
   # 3. MACOS (.dmg) BUILD ON MACOS RUNNER (UNIVERSAL 2)
@@ -271,7 +318,6 @@ jobs:
     - name: Sign app bundle (Developer ID, hardened runtime)
       if: ${{ env.MACOS_CERT_P12_BASE64 != '' }}
       run: |
-        # Сначала вложенный код (плагины, библиотеки, фреймворки), затем сам бандл.
         find "$APP_PATH" -type f \( -name "*.dylib" -o -name "*.so" \) -print0 | \
           xargs -0 -n1 codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY"
         find "$APP_PATH/Contents/Frameworks" -maxdepth 1 -name "*.framework" -print0 | \
