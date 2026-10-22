@@ -18,6 +18,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QByteArray>
 #include <QLocale>
 #include <QCoreApplication>
 #include <QRegularExpression>
@@ -59,6 +60,7 @@
 #include <map>
 #include <cmath>
 #include <algorithm>
+#include <cctype>
 
 namespace {
 struct CursorGuard {
@@ -1038,7 +1040,7 @@ void ContigWidget::exportConsensusGenBank(const QString &filePath) {
   
   if (!restrictionEnzymes.empty()) {
     for (const auto& enz : restrictionEnzymes) {
-      if (!enz.enabled) continue;
+      if (!enz.enabled) continue; // экспортируем только включенные
       int mLen = enz.motif.length();
       if (ungapped.length() < mLen) continue;
       for (int pos = 0; pos <= ungapped.length() - mLen; ++pos) {
@@ -1492,22 +1494,22 @@ void ContigWidget::applyTrimToTrack(AlignedTrack &tr, int trimLeftCount, int tri
   auto &tC = tr.originalData.traceC;
   auto &tG = tr.originalData.traceG;
   auto &tT = tr.originalData.traceT;
-  
+
   int n = seq.length();
   if (n == 0) return;
-  
+
   int start = trimLeftCount;
   int end = n - 1 - trimRightCount;
-  
+
   if (start > end || start >= n) {
     seq.clear(); q.clear(); ploc.clear(); tA.clear(); tC.clear(); tG.clear(); tT.clear();
     return;
   }
-  
+
   int newLen = end - start + 1;
   int traceLen = 0;
   if (!tA.empty()) traceLen = std::min({(int)tA.size(), (int)tC.size(), (int)tG.size(), (int)tT.size()});
-  
+
   int startSample = 0, endSample = traceLen;
   if (traceLen > 0 && !ploc.empty()) {
     if (start > 0 && start < (int)ploc.size()) startSample = (ploc[start - 1] + ploc[start]) / 2;
@@ -1515,14 +1517,14 @@ void ContigWidget::applyTrimToTrack(AlignedTrack &tr, int trimLeftCount, int tri
     startSample = std::clamp(startSample, 0, traceLen);
     endSample = std::clamp(endSample, startSample, traceLen);
   }
-  
+
   seq = seq.mid(start, newLen);
-  
+
   if (start < (int)q.size()) {
     int newQLen = std::min(newLen, (int)q.size() - start);
     q = std::vector<int>(q.begin() + start, q.begin() + start + newQLen);
   } else { q.clear(); }
-  
+
   bool traceSliced = false;
   if (traceLen > 0 && startSample < endSample) {
     tA = std::vector<int>(tA.begin() + startSample, tA.begin() + endSample);
@@ -1531,7 +1533,7 @@ void ContigWidget::applyTrimToTrack(AlignedTrack &tr, int trimLeftCount, int tri
     tT = std::vector<int>(tT.begin() + startSample, tT.begin() + endSample);
     traceSliced = true;
   }
-  
+
   if (start < (int)ploc.size()) {
     int newPLen = std::min(newLen, (int)ploc.size() - start);
     ploc = std::vector<int>(ploc.begin() + start, ploc.begin() + start + newPLen);
@@ -1546,13 +1548,13 @@ void ContigWidget::trimLowQualityEnds(int minPhred) {
     auto &q = tr.originalData.qualityScores;
     int n = tr.originalData.sequence.length();
     if (n == 0 || q.empty()) continue;
-    
+
     int start = 0;
     while (start < n && start < (int)q.size() && q[start] < minPhred) start++;
-    
+
     int end = n - 1;
     while (end >= start && end < (int)q.size() && q[end] < minPhred) end--;
-    
+
     int trimLeft = start;
     int trimRight = n - 1 - end;
     if (trimLeft > 0 || trimRight > 0) applyTrimToTrack(tr, trimLeft, trimRight);
@@ -1668,10 +1670,19 @@ bool ContigWidget::saveProject(const QString &filePath) {
     tracksArray.append(trObj);
   }
   root["tracks"] = tracksArray;
+
   QFile file(filePath);
   if (!file.open(QIODevice::WriteOnly)) return false;
+  
   const QByteArray json = QJsonDocument(root).toJson(QJsonDocument::Compact);
-  return file.write(json) == json.size();
+  // Используем qCompress (zlib) для сжатия громоздкого JSON в бинарник
+  const QByteArray compressed = qCompress(json, 9);
+  
+  const bool success = file.write(compressed) == compressed.size();
+  if (success) {
+    setModified(false);
+  }
+  return success;
 }
 
 bool ContigWidget::loadProject(const QString &filePath) {
@@ -1679,8 +1690,23 @@ bool ContigWidget::loadProject(const QString &filePath) {
   QFile file(filePath);
   if (!file.open(QIODevice::ReadOnly)) return false;
 
+  QByteArray data = file.readAll();
+  if (data.isEmpty()) return false;
+
+  // Распознавание формата: если начинается с '{' (игнорируя пробелы), это Plain JSON,
+  // иначе это бинарник, сжатый через qCompress.
+  bool isPlainJson = false;
+  for (char c : data) {
+    if (std::isspace(static_cast<unsigned char>(c))) continue;
+    if (c == '{') isPlainJson = true;
+    break;
+  }
+
+  QByteArray json = isPlainJson ? data : qUncompress(data);
+  if (json.isEmpty()) return false;
+
   QJsonParseError parseError;
-  const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+  const QJsonDocument doc = QJsonDocument::fromJson(json, &parseError);
   if (parseError.error != QJsonParseError::NoError || !doc.isObject()) return false;
 
   const QJsonObject root = doc.object();

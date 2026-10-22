@@ -256,6 +256,10 @@ void MainWindow::createActions() {
   actOpen = new QAction("📂 Open Sequencing Files...", this);
   actOpen->setShortcut(QKeySequence::Open);
   connect(actOpen, &QAction::triggered, this, &MainWindow::openFiles);
+
+  actLoadRef = new QAction("🎯 Load Reference Sequence...", this);
+  actLoadRef->setToolTip("Set a custom reference sequence from FASTA/GenBank/TXT");
+  connect(actLoadRef, &QAction::triggered, this, &MainWindow::loadReference);
   
   actClear = new QAction("🗑 Clear Workspace", this);
   actClear->setToolTip("Remove all loaded tracks and sequences, reset workspace");
@@ -475,6 +479,7 @@ void MainWindow::createActions() {
 void MainWindow::createMenus() {
   QMenu *fileMenu = menuBar()->addMenu("&File");
   fileMenu->addAction(actOpen);
+  fileMenu->addAction(actLoadRef);
   menuRecent = fileMenu->addMenu("🕘 Open Recent");
   connect(menuRecent, &QMenu::aboutToShow, this, &MainWindow::updateRecentMenu);
   fileMenu->addAction(actClear);
@@ -549,20 +554,20 @@ void MainWindow::createMenus() {
   menuSpeed = speechMenu->addMenu("⏱ Speed Presets");
   struct SpeedPreset { QString label; double rate; };
   const std::vector<SpeedPreset> speeds = {
-    {"0.5x (Very Slow)", -1.0},
-    {"0.75x (Slow)", -0.5},
-    {"1.0x (Normal)", 0.0},
-    {"1.25x (Fast)", 0.25},
-    {"1.5x (Faster)", 0.5},
-    {"1.75x (Very Fast)", 0.75},
-    {"2.0x (Double Speed)", 1.0}
+      {"0.5x (Very Slow)", -1.0},
+      {"0.75x (Slow)", -0.5},
+      {"1.0x (Normal)", 0.0},
+      {"1.25x (Fast)", 0.25},
+      {"1.5x (Faster)", 0.5},
+      {"1.75x (Very Fast)", 0.75},
+      {"2.0x (Double Speed)", 1.0}
   };
   for (const auto &sp : speeds) {
-    QAction *spAct = menuSpeed->addAction(sp.label);
-    connect(spAct, &QAction::triggered, this, [this, r = sp.rate]() {
-      contigWidget->setSpeechRate(r);
-      writeSettings();
-    });
+      QAction *spAct = menuSpeed->addAction(sp.label);
+      connect(spAct, &QAction::triggered, this, [this, r = sp.rate]() {
+        contigWidget->setSpeechRate(r);
+        writeSettings();
+      });
   }
   
   QMenu *helpMenu = menuBar()->addMenu("&Help");
@@ -577,18 +582,18 @@ void MainWindow::updateVoiceActions() {
   QVoice curVoice = contigWidget->getCurrentVoice();
   
   for (const QVoice &v : voices) {
-    QString label = QString("%1 (%2)").arg(v.name()).arg(QLocale::languageToString(v.locale().language()));
-    QAction *vAct = menuVoice->addAction(label);
-    vAct->setCheckable(true);
-    if (v.name() == curVoice.name()) vAct->setChecked(true);
-    connect(vAct, &QAction::triggered, this, [this, v]() {
-      contigWidget->setVoice(v);
-      if (voiceCombo) {
-        int idx = voiceCombo->findData(v.name());
-        if (idx >= 0) voiceCombo->setCurrentIndex(idx);
-      }
-      writeSettings();
-    });
+      QString label = QString("%1 (%2)").arg(v.name()).arg(QLocale::languageToString(v.locale().language()));
+      QAction *vAct = menuVoice->addAction(label);
+      vAct->setCheckable(true);
+      if (v.name() == curVoice.name()) vAct->setChecked(true);
+      connect(vAct, &QAction::triggered, this, [this, v]() {
+          contigWidget->setVoice(v);
+          if (voiceCombo) {
+            int idx = voiceCombo->findData(v.name());
+            if (idx >= 0) voiceCombo->setCurrentIndex(idx);
+          }
+          writeSettings();
+      });
   }
 }
 
@@ -597,10 +602,11 @@ void MainWindow::createToolBars() {
   QToolBar *fileBar = addToolBar("File & Project");
   fileBar->setObjectName("FileToolBar");
   fileBar->addAction(actOpen);
+  fileBar->addAction(actLoadRef);
   fileBar->addAction(actClear);
   fileBar->addAction(actSaveProj);
   fileBar->addAction(actPrintExport);
-  
+
   // 2. Панель выравнивания и параметров сборки
   QToolBar *alignBar = addToolBar("Alignment & Assembly");
   alignBar->setObjectName("AlignToolBar");
@@ -681,6 +687,8 @@ void MainWindow::createToolBars() {
     contigWidget->setThreadCount(v);
     writeSettings();
   });
+
+  addToolBarBreak(Qt::TopToolBarArea);
   
   // 3. Панель масштабирования и отображения
   QToolBar *viewBar = addToolBar("View & Zoom");
@@ -697,6 +705,8 @@ void MainWindow::createToolBars() {
   viewBar->addAction(actToggleOrfB);
   viewBar->addAction(actToggleRestr);
   viewBar->addAction(actToggleIupac);
+
+  addToolBarBreak(Qt::TopToolBarArea);
   
   // 4. Панель редактирования, поиска и SNP
   QToolBar *editBar = addToolBar("Edit & Navigation");
@@ -731,6 +741,8 @@ void MainWindow::createToolBars() {
   analysisBar->addAction(actBlast);
   analysisBar->addAction(actProps);
   analysisBar->addAction(actVirtualGel);
+
+  addToolBarBreak(Qt::TopToolBarArea);
   
   // 6. Панель голосовой диктовки
   QToolBar *speechBar = addToolBar("Text-to-Speech Controls");
@@ -781,6 +793,30 @@ void MainWindow::createToolBars() {
     speedLabel->setText(QString(" %1x ").arg(multiplier, 0, 'f', 2));
     contigWidget->setSpeechRate(rate);
   });
+}
+
+void MainWindow::loadReference() {
+  QString path = QFileDialog::getOpenFileName(
+      this, "Load Reference Sequence", "",
+      "Sequence Files (*.fasta *.fa *.gb *.gbk *.txt);;All Files (*)");
+  if (path.isEmpty()) return;
+
+  QString refSeq;
+  if (path.endsWith(".txt", Qt::CaseInsensitive)) {
+    auto records = SequenceFileParser::parseTxt(path);
+    if (!records.empty()) refSeq = records.front().data.sequence;
+  } else {
+    auto records = SequenceFileParser::parseFastaOrGbRecords(path);
+    if (!records.empty()) refSeq = records.front().data.sequence;
+  }
+
+  if (refSeq.isEmpty()) {
+    QMessageBox::warning(this, "Load Reference", "Could not extract a valid sequence from the selected file.");
+    return;
+  }
+
+  contigWidget->setReference(refSeq);
+  contigWidget->runAlignment();
 }
 
 void MainWindow::clearWorkspace() {

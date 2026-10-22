@@ -139,8 +139,8 @@ public:
   QVoice getCurrentVoice() const;
   double getSpeechRate() const { return speechRate; }
   
-  signals:
-    void projectLoaded(const QString &filePath);
+signals:
+  void projectLoaded(const QString &filePath);
   void autoRCChanged(bool enabled);
   void restrictionSitesToggled(bool visible);
   void showOrfAChanged(bool enabled);
@@ -157,8 +157,8 @@ public:
   void statsChanged();
   void modifiedChanged(bool modified);
   
-  public slots:
-    void undo();
+public slots:
+  void undo();
   void redo();
   void runAlignment();
   void setAutoRC(bool enable);

@@ -40,8 +40,9 @@ public:
   // Предлагает восстановить автосохранённую сессию (после аварийного завершения).
   void maybeRestoreAutosave();
   
-  private slots:
-    void openFiles();
+private slots:
+  void openFiles();
+  void loadReference();
   void clearWorkspace();
   void openProject();
   void saveProject();
@@ -108,6 +109,7 @@ private:
   
   // Действия файлов
   QAction *actOpen = nullptr;
+  QAction *actLoadRef = nullptr;
   QAction *actClear = nullptr;
   QAction *actOpenProj = nullptr;
   QAction *actSaveProj = nullptr;
