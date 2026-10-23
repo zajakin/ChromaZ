@@ -25,6 +25,10 @@
 #include "minimapwidget.h"
 #include "cli.h"
 
+// Версия сохранённого состояния окна. При смене раскладки панелей увеличивать: старое состояние
+// (панели в одну строку) иначе перекрыло бы новую раскладку из 4 строк.
+static const int kWindowStateVersion = 4;
+
 #ifndef CHROMAZ_VERSION
 #define CHROMAZ_VERSION "1.0.0"
 #endif
@@ -97,7 +101,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   });
   connect(contigWidget, &ContigWidget::modifiedChanged, this, [this](bool) { updateWindowTitle(); });
   connect(contigWidget, &ContigWidget::projectLoaded, this, [this](const QString &path) {
-    if (path == autosavePath()) { currentProjectPath.clear(); }
+    if (QFileInfo(path).absoluteFilePath() == QFileInfo(autosavePath()).absoluteFilePath()) { currentProjectPath.clear(); }
     else { currentProjectPath = path; addRecent(path); }
     updateWindowTitle();
   });
@@ -107,7 +111,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   autosaveTimer->setInterval(120000);
   connect(autosaveTimer, &QTimer::timeout, this, [this]() {
     if (batchMode || !contigWidget->hasTracks() || !contigWidget->isModified()) return;
-    if (contigWidget->saveProject(autosavePath())) statusBar()->showMessage("Session autosaved", 2000);
+    if (contigWidget->saveProject(autosavePath(), 3)) statusBar()->showMessage("Session autosaved", 2000);
   });
   autosaveTimer->start();
 
@@ -126,7 +130,7 @@ void MainWindow::writeSettings() {
   if (loadingSettings || settingsLocked) return;
   QSettings settings("ChromaZ", "ChromaZ");
   settings.setValue("geometry", saveGeometry());
-  settings.setValue("windowState", saveState());
+  settings.setValue("windowState", saveState(kWindowStateVersion));
   settings.setValue("speechRate", contigWidget->getSpeechRate());
   
   QString vName = contigWidget->getCurrentVoice().name();
@@ -157,7 +161,7 @@ void MainWindow::readSettings() {
     restoreGeometry(settings.value("geometry").toByteArray());
   }
   if (settings.contains("windowState")) {
-    restoreState(settings.value("windowState").toByteArray());
+    restoreState(settings.value("windowState").toByteArray(), kWindowStateVersion);
   }
   
   if (settings.contains("speechRate")) {
@@ -275,7 +279,8 @@ void MainWindow::createActions() {
   actExportFasta = new QAction("📄 Export Consensus FASTA...", this);
   connect(actExportFasta, &QAction::triggered, this, [this]() {
     QString p = QFileDialog::getSaveFileName(this, "Export Consensus FASTA", "consensus.fasta", "FASTA (*.fasta *.fa)");
-    if (!p.isEmpty()) contigWidget->exportConsensusFasta(p);
+    if (!p.isEmpty() && !contigWidget->exportConsensusFasta(p))
+      QMessageBox::warning(this, "Export FASTA", "Nothing was exported: there is no consensus sequence or the file could not be written:\n" + p);
   });
   
   actExportGenBank = new QAction("📥 Export Annotated GenBank (.gbk)...", this);
@@ -284,7 +289,8 @@ void MainWindow::createActions() {
   actExportImage = new QAction("🖼 Export View PNG...", this);
   connect(actExportImage, &QAction::triggered, this, [this]() {
     QString p = QFileDialog::getSaveFileName(this, "Export View Image", "alignment.png", "PNG (*.png)");
-    if (!p.isEmpty()) contigWidget->exportViewImage(p);
+    if (!p.isEmpty() && !contigWidget->exportViewImage(p))
+      QMessageBox::warning(this, "Export View PNG", "The view could not be exported (the image may be too large — zoom out and try again):\n" + p);
   });
   
   actPrintExport = new QAction("🖨 Print & Export PDF Report...", this);
@@ -803,20 +809,23 @@ void MainWindow::loadReference() {
 
   QString refSeq;
   if (path.endsWith(".txt", Qt::CaseInsensitive)) {
-    auto records = SequenceFileParser::parseTxt(path);
-    if (!records.empty()) refSeq = records.front().data.sequence;
+    // Простой текст: последовательность может быть разбита на несколько строк — склеиваем все.
+    for (const auto &rec : SequenceFileParser::parseTxt(path)) refSeq += rec.data.sequence;
   } else {
+    // FASTA / GenBank: берём первую запись.
     auto records = SequenceFileParser::parseFastaOrGbRecords(path);
     if (!records.empty()) refSeq = records.front().data.sequence;
   }
+  refSeq.remove('-');
 
   if (refSeq.isEmpty()) {
     QMessageBox::warning(this, "Load Reference", "Could not extract a valid sequence from the selected file.");
     return;
   }
 
-  contigWidget->setReference(refSeq);
-  contigWidget->runAlignment();
+  contigWidget->setReference(refSeq, true);   // одно действие отмены: смена референса + перевыравнивание
+  addRecent(path);
+  statusBar()->showMessage(QString("Reference loaded: %1 (%2 bp)").arg(QFileInfo(path).fileName()).arg(refSeq.length()), 5000);
 }
 
 void MainWindow::clearWorkspace() {
@@ -824,6 +833,8 @@ void MainWindow::clearWorkspace() {
                             "Are you sure you want to remove all loaded tracks and reset the alignment view?",
                             QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes) {
     contigWidget->clearAll();
+    currentProjectPath.clear();   // новая сессия: "Save" спросит имя файла, а не перезапишет прежний проект
+    updateWindowTitle();
   }
 }
 
@@ -857,6 +868,7 @@ void MainWindow::openFiles() {
 }
 
 bool MainWindow::loadFiles(const QStringList &files) {
+  if (!contigWidget->hasTracks() && !contigWidget->isAligning()) currentProjectPath.clear();
   int added = 0;
   QStringList failed;
 
@@ -1136,17 +1148,17 @@ void MainWindow::applyCommandLine(const QCommandLineParser &p) {
   }
   if (p.isSet("trim-vectors")) cliSteps.push_back([this]() { contigWidget->trimVectors(); });
 
-  auto checkOutput = [this](const QString &path, const char *what) {
-    if (QFileInfo(path).exists()) std::printf("ChromaZ: wrote %s: %s\n", what, path.toLocal8Bit().constData());
-    else reportError("Export", QString("Could not write ") + what + ": " + path);
+  auto reportOutput = [this](bool ok, const QString &path, const char *what) {
+    if (ok) std::printf("ChromaZ: wrote %s: %s\n", what, path.toLocal8Bit().constData());
+    else reportError("Export", QString("Could not write ") + what + ": " + path + " (is there a consensus, and is the location writable?)");
   };
-  if (p.isSet("export-fasta")) { const QString f = p.value("export-fasta"); cliSteps.push_back([this, f, checkOutput]() { contigWidget->exportConsensusFasta(f); checkOutput(f, "FASTA"); }); }
-  if (p.isSet("export-gbk"))   { const QString f = p.value("export-gbk");   cliSteps.push_back([this, f, checkOutput]() { contigWidget->exportConsensusGenBank(f); checkOutput(f, "GenBank"); }); }
-  if (p.isSet("export-png"))   { const QString f = p.value("export-png");   cliSteps.push_back([this, f, checkOutput]() { contigWidget->exportViewImage(f); checkOutput(f, "PNG"); }); }
+  if (p.isSet("export-fasta")) { const QString f = p.value("export-fasta"); cliSteps.push_back([this, f, reportOutput]() { reportOutput(contigWidget->exportConsensusFasta(f), f, "FASTA"); }); }
+  if (p.isSet("export-gbk"))   { const QString f = p.value("export-gbk");   cliSteps.push_back([this, f, reportOutput]() { reportOutput(contigWidget->exportConsensusGenBank(f), f, "GenBank"); }); }
+  if (p.isSet("export-png"))   { const QString f = p.value("export-png");   cliSteps.push_back([this, f, reportOutput]() { reportOutput(contigWidget->exportViewImage(f), f, "PNG"); }); }
   if (p.isSet("export-pdf")) {
     const QString f = p.value("export-pdf");
     int bases = p.isSet("pdf-bases") ? p.value("pdf-bases").toInt() : 60;
-    cliSteps.push_back([this, f, bases, checkOutput]() { contigWidget->exportPdfReport(f, bases); checkOutput(f, "PDF"); });
+    cliSteps.push_back([this, f, bases, reportOutput]() { reportOutput(contigWidget->exportPdfReport(f, bases), f, "PDF"); });
   }
   if (p.isSet("save-project")) {
     const QString f = p.value("save-project");

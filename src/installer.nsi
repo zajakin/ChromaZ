@@ -16,7 +16,25 @@ RequestExecutionLevel admin
 Icon "${ICON_NAME}"
 UninstallIcon "${ICON_NAME}"
 
-Page directory
+Function .onInit
+    SetRegView 64
+FunctionEnd
+
+Function un.onInit
+    SetRegView 64
+FunctionEnd
+
+; Пользователь может выбрать любую папку. Чтобы деинсталлятор (RMDir /r) никогда не удалил чужие файлы,
+; программа всегда ставится в папку с именем ChromaZ: если выбранная папка так не называется,
+; добавляем подпапку.
+Function dirLeave
+    StrLen $0 "\${APP_NAME}"
+    StrCpy $1 $INSTDIR "" -$0
+    StrCmp $1 "\${APP_NAME}" +2 0
+        StrCpy $INSTDIR "$INSTDIR\${APP_NAME}"
+FunctionEnd
+
+Page directory "" "" dirLeave
 Page instfiles
 
 UninstPage uninstConfirm
@@ -53,8 +71,20 @@ Section "Uninstall"
     Delete "$SMPROGRAMS\${APP_NAME}\*.*"
     RMDir "$SMPROGRAMS\${APP_NAME}"
     
+    StrLen $0 "\${APP_NAME}"
+    StrCpy $1 $INSTDIR "" -$0
+    StrCmp $1 "\${APP_NAME}" removeAll removeKnown
+removeAll:
     Delete "$INSTDIR\${ICON_NAME}"
     RMDir /r "$INSTDIR"
+    Goto removeDone
+removeKnown:
+    ; Папка установки называется иначе: удаляем только файлы самой программы, а не всю папку.
+    Delete "$INSTDIR\${EXE_NAME}"
+    Delete "$INSTDIR\${ICON_NAME}"
+    Delete "$INSTDIR\uninstall.exe"
+    RMDir "$INSTDIR"
+removeDone:
     
     DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
     DeleteRegKey HKLM "Software\${APP_NAME}"

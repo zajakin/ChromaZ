@@ -105,9 +105,9 @@ jobs:
   build-windows:
     runs-on: windows-latest
     env:
-      WIN_CERT_PFX_BASE64: ${{ secrets.WIN_CERT_PFX_BASE64 }}
-      WIN_CERT_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
-      CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
+      # Только признак наличия сертификата: сами секреты передаются лишь тем шагам, которым они нужны,
+      # а не всем сторонним действиям задания.
+      HAS_WIN_CERT: ${{ secrets.WIN_CERT_PFX_BASE64 != '' }}
 
     steps:
     - name: Checkout repository
@@ -160,12 +160,16 @@ jobs:
         windeployqt win/ChromaZ.exe
 
     - name: Sign ChromaZ.exe (if a certificate is configured)
-      if: ${{ env.WIN_CERT_PFX_BASE64 != '' }}
+      if: ${{ env.HAS_WIN_CERT == 'true' }}
       shell: pwsh
+      env:
+        WIN_CERT_PFX_BASE64: ${{ secrets.WIN_CERT_PFX_BASE64 }}
+        WIN_CERT_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
       run: |
-        $pfx = Join-Path$env:RUNNER_TEMP "codesign.pfx"
-        [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WIN_CERT_PFX_BASE64))$signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1).FullName
-        & $signtool sign /f $pfx /p$env:WIN_CERT_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 win\ChromaZ.exe
+        $pfx = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+        [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WIN_CERT_PFX_BASE64))
+        $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1).FullName
+        & $signtool sign /f $pfx /p $env:WIN_CERT_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 "win\ChromaZ.exe"
         if ($LASTEXITCODE -ne 0) { throw "signtool failed" }
         Remove-Item $pfx
 
@@ -176,12 +180,16 @@ jobs:
         mv ChromaZ_Setup.exe ChromaZ_Windows_Install_${{ env.APP_VERSION }}.exe
 
     - name: Sign installer (if a certificate is configured)
-      if: ${{ env.WIN_CERT_PFX_BASE64 != '' }}
+      if: ${{ env.HAS_WIN_CERT == 'true' }}
       shell: pwsh
+      env:
+        WIN_CERT_PFX_BASE64: ${{ secrets.WIN_CERT_PFX_BASE64 }}
+        WIN_CERT_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
       run: |
-        $pfx = Join-Path$env:RUNNER_TEMP "codesign.pfx"
-        [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WIN_CERT_PFX_BASE64))$signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1).FullName
-        & $signtool sign /f $pfx /p$env:WIN_CERT_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 "ChromaZ_Windows_Install_${{ env.APP_VERSION }}.exe"
+        $pfx = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+        [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WIN_CERT_PFX_BASE64))
+        $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1).FullName
+        & $signtool sign /f $pfx /p $env:WIN_CERT_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 "ChromaZ_Windows_Install_${{ env.APP_VERSION }}.exe"
         if ($LASTEXITCODE -ne 0) { throw "signtool failed" }
         Remove-Item $pfx
 
@@ -192,42 +200,9 @@ jobs:
         path: ChromaZ_Windows_Install_${{ env.APP_VERSION }}.exe
         retention-days: 30
 
-    # -----------------------------------------------------------------
-    # Сборка и авто-публикация пакета Chocolatey (без выгрузки в GitHub Release)
-    # -----------------------------------------------------------------
-    - name: Build & Publish Chocolatey Package
-      if: startsWith(github.ref, 'refs/tags/') && env.CHOCO_API_KEY != ''
-      shell: pwsh
-      run: |
-        $ver = "${{ env.APP_VERSION }}"
-        $chocoVer =$ver.Replace("-", ".")
-        $installer = "ChromaZ_Windows_Install_${ver}.exe"
-
-        # 1. Вычисляем хэш собранного Windows-инсталлятора
-        $hash = (Get-FileHash$installer -Algorithm SHA256).Hash
-        Write-Host "Installer SHA256: $hash"
-
-        # 2. Формируем прямой URL к релизному .exe
-        $tag = "${{ github.ref_name }}"
-        if (-not $tag.StartsWith("v")) { $tag = "v" + $ver }$url = "https://github.com/zajakin/ChromaZ/releases/download/$tag/$installer"
-
-        # 3. Подставляем реальные значения в шаблоны
-        $nuspec = "chocolatey/chromaz.nuspec"
-        $installScript = "chocolatey/tools/chocolateyInstall.ps1"
-
-        (Get-Content $nuspec -Raw) -replace '[[VERSION]]', $chocoVer \vert{} Set-Content$nuspec -Encoding UTF8
-        (Get-Content $installScript -Raw) `
-            -replace '\[\[URL64\]\]', $url `
-            -replace '[[CHECKSUM]]', $hash \vert{} Set-Content$installScript -Encoding UTF8
-
-        # 4. Собираем пакет во временный каталог
-        $pkgDir = Join-Path$env:RUNNER_TEMP "choco_pkg"
-        New-Item -ItemType Directory -Path $pkgDir -Force
-        choco pack $nuspec --outputdirectory$pkgDir
-
-        # 5. Отправляем в репозиторий Chocolatey
-        Write-Host "Pushing package to Chocolatey..."
-        choco push (Get-ChildItem (Join-Path $pkgDir "*.nupkg")).FullName --api-key $env:CHOCO_API_KEY --source https://push.chocolatey.org/
+  # Пакет Chocolatey публикуется отдельным workflow (.github/workflows/chocolatey.yml)
+  # после публикации GitHub Release: пока релиз — черновик, ссылка на .exe недоступна,
+  # и проверка пакета на стороне Chocolatey завершилась бы ошибкой.
 
 
   # -------------------------------------------------------------------
@@ -236,12 +211,7 @@ jobs:
   build-macos:
     runs-on: macos-14
     env:
-      MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
-      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
-      MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      HAS_MAC_CERT: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
 
     steps:
     - name: Checkout repository
@@ -291,11 +261,14 @@ jobs:
         $QT_ROOT_DIR/bin/macdeployqt "$APP_PATH"
 
     - name: Import signing certificate (if configured)
-      if: ${{ env.MACOS_CERT_P12_BASE64 != '' }}
+      if: ${{ env.HAS_MAC_CERT == 'true' }}
+      env:
+        MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+        MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
       run: |
         KEYCHAIN="$RUNNER_TEMP/chromaz-build.keychain-db"
         KEYCHAIN_PASSWORD="$(uuidgen)"
-        echo "$MACOS_CERT_P12_BASE64" \vert{} base64 --decode > "$RUNNER_TEMP/cert.p12"
+        echo "$MACOS_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
         security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
         security set-keychain-settings -lut 21600 "$KEYCHAIN"
         security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
@@ -305,8 +278,11 @@ jobs:
         rm -f "$RUNNER_TEMP/cert.p12"
 
     - name: Sign app bundle (Developer ID, hardened runtime)
-      if: ${{ env.MACOS_CERT_P12_BASE64 != '' }}
+      if: ${{ env.HAS_MAC_CERT == 'true' }}
+      env:
+        MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
       run: |
+        # Сначала вложенный код (плагины, библиотеки, фреймворки), затем сам бандл.
         find "$APP_PATH" -type f \( -name "*.dylib" -o -name "*.so" \) -print0 | \
           xargs -0 -n1 codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY"
         find "$APP_PATH/Contents/Frameworks" -maxdepth 1 -name "*.framework" -print0 | \
@@ -320,7 +296,12 @@ jobs:
         hdiutil create -volname "ChromaZ" -srcfolder "$APP_PATH" -ov -format UDZO "$DMG"
 
     - name: Sign, notarize and staple DMG (if configured)
-      if: ${{ env.MACOS_CERT_P12_BASE64 != '' }}
+      if: ${{ env.HAS_MAC_CERT == 'true' }}
+      env:
+        MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
       run: |
         DMG="ChromaZ_macOS_Install_${{ env.APP_VERSION }}.dmg"
         codesign --force --timestamp --sign "$MACOS_SIGN_IDENTITY" "$DMG"
@@ -355,6 +336,12 @@ jobs:
       with:
         path: dist
         merge-multiple: true
+
+    - name: Compute SHA-256 checksums
+      run: |
+        cd dist
+        sha256sum * > SHA256SUMS.txt
+        cat SHA256SUMS.txt
 
     - name: Create draft release with all installers
       uses: softprops/action-gh-release@v3

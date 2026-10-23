@@ -11,6 +11,11 @@ if (Test-Path $uninstaller) {
     file        = $uninstaller
   }
   Uninstall-ChocolateyPackage @packageArgs
+
+  # NSIS при запуске с _?= выполняется на месте и не удаляет ни сам uninstall.exe, ни папку установки.
+  if (Test-Path $installDir) {
+    Remove-Item -Path $installDir -Recurse -Force -ErrorAction SilentlyContinue
+  }
 } else {
   Write-Warning "Uninstaller not found at $uninstaller"
 }

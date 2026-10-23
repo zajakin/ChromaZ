@@ -117,7 +117,8 @@ public:
   void centerOnColumn(int col);
   bool exportPdfReport(const QString &path, int basesPerLine = 60);
   
-  void setReference(const QString &seq);
+  // realign == true: после установки референса сразу перевыровнять риды (одно действие отмены)
+  void setReference(const QString &seq, bool realign = false);
   bool addAb1Track(const QString &filePath, const Ab1Data &data);
   bool isFileLoaded(const QString &filePath) const;
   void fitToWindowHeight(int viewportHeight = -1);
@@ -132,7 +133,8 @@ public:
   AlignmentAlgorithm getAlignmentAlgorithm() const { return currentAlgorithm; }
   int getTranslationTable() const { return translationTable; }
   
-  bool saveProject(const QString &filePath);
+  // compressionLevel: 0..9 (9 — максимальное сжатие для ручного сохранения; автосохранение использует меньший)
+  bool saveProject(const QString &filePath, int compressionLevel = 9);
   bool loadProject(const QString &filePath);
   
   QList<QVoice> getAvailableVoices() const;
@@ -185,7 +187,7 @@ public slots:
   
   void openInNcbiBlast();
   void showSequenceProperties();
-  void exportConsensusGenBank(const QString &filePath);
+  bool exportConsensusGenBank(const QString &filePath);
   void exportConsensusGenBankPrompt();
   
   void showPrintExportDialog();
@@ -194,8 +196,8 @@ public slots:
   void jumpNextSNP();
   void jumpPrevSNP();
   void findSequence(const QString &query, bool forward = true);
-  void exportConsensusFasta(const QString &filePath);
-  void exportViewImage(const QString &filePath);
+  bool exportConsensusFasta(const QString &filePath);
+  bool exportViewImage(const QString &filePath);
   void zoomInX(); void zoomOutX();
   void zoomInY(); void zoomOutY();
   void increaseTrackHeight(); void decreaseTrackHeight();

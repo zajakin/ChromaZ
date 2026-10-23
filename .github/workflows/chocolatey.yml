@@ -1,0 +1,96 @@
+name: Publish Chocolatey package
+
+# Запускается ПОСЛЕ публикации GitHub Release (когда черновик опубликован вручную),
+# потому что Chocolatey проверяет пакет, скачивая установщик по ссылке на релиз.
+# Пока релиз — черновик, эта ссылка недоступна.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish (e.g. v1.2.0)'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  chocolatey:
+    # Предрелизы в Chocolatey не публикуем
+    if: ${{ github.event_name == 'workflow_dispatch' || !github.event.release.prerelease }}
+    runs-on: windows-latest
+    env:
+      HAS_CHOCO_KEY: ${{ secrets.CHOCO_API_KEY != '' }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v5
+
+    - name: Resolve release tag and version
+      shell: pwsh
+      env:
+        RELEASE_TAG: ${{ github.event.release.tag_name }}
+        INPUT_TAG: ${{ github.event.inputs.tag }}
+      run: |
+        $tag = $env:RELEASE_TAG
+        if ([string]::IsNullOrWhiteSpace($tag)) { $tag = $env:INPUT_TAG }
+        if ([string]::IsNullOrWhiteSpace($tag)) { throw "Release tag is not defined." }
+        $ver = $tag.TrimStart('v')
+        "TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        "VER=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        Write-Host "Release $tag (version $ver)"
+
+    - name: Download the released installer and compute SHA-256
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        $installer = "ChromaZ_Windows_Install_$($env:VER).exe"
+        gh release download $env:TAG --repo $env:GITHUB_REPOSITORY --pattern $installer --clobber
+        if (-not (Test-Path $installer)) { throw "Asset $installer was not found in release $($env:TAG)" }
+        $hash = (Get-FileHash $installer -Algorithm SHA256).Hash
+        Write-Host "Installer SHA256: $hash"
+        "INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        "SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+    - name: Fill in the package templates
+      shell: pwsh
+      run: |
+        $chocoVer = $env:VER.Replace('-', '.')
+        $url = "https://github.com/$($env:GITHUB_REPOSITORY)/releases/download/$($env:TAG)/$($env:INSTALLER)"
+        $nuspec = 'chocolatey/chromaz.nuspec'
+        $install = 'chocolatey/tools/chocolateyInstall.ps1'
+        # Литеральная замена, а не регулярное выражение: '[[VERSION]]' в -replace означало бы класс символов.
+        (Get-Content $nuspec -Raw).Replace('[[VERSION]]', $chocoVer) | Set-Content $nuspec -Encoding UTF8
+        (Get-Content $install -Raw).Replace('[[URL64]]', $url).Replace('[[CHECKSUM]]', $env:SHA256) | Set-Content $install -Encoding UTF8
+        foreach ($f in @($nuspec, $install)) {
+          if ((Get-Content $f -Raw) -match '\[\[[A-Z0-9]+\]\]') { throw "Unresolved placeholder in $f" }
+        }
+        Write-Host "Package version: $chocoVer"
+        Write-Host "Installer URL:   $url"
+
+    - name: Pack
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Path pkg -Force | Out-Null
+        choco pack chocolatey/chromaz.nuspec --outputdirectory pkg
+        if ($LASTEXITCODE -ne 0) { throw "choco pack failed" }
+        Get-ChildItem pkg
+
+    - name: Upload package artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: chocolatey-package
+        path: pkg/*.nupkg
+        retention-days: 30
+
+    - name: Push to Chocolatey (if the API key is configured)
+      if: ${{ env.HAS_CHOCO_KEY == 'true' }}
+      shell: pwsh
+      env:
+        CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
+      run: |
+        $pkg = (Get-ChildItem pkg/*.nupkg | Select-Object -First 1).FullName
+        choco push $pkg --api-key $env:CHOCO_API_KEY --source https://push.chocolatey.org/
+        if ($LASTEXITCODE -ne 0) { throw "choco push failed" }

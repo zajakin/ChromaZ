@@ -6,6 +6,7 @@
 #include "../msa.h"
 #include "../tmcalc.h"
 #include "../gelmath.h"
+#include "../projectio.h"
 
 namespace {
 
@@ -338,6 +339,33 @@ class TestChromaZ : public QObject {
     QVERIFY(!TmCalc::nearestNeighbor(p, 0, 0, 250).valid);               // соль не задана
     QVERIFY(!TmCalc::nearestNeighbor(p, 50, 0, 0).valid);                // праймер не задан
     QVERIFY(TmCalc::nearestNeighbor("CGCGAATTCGCG", 50, 0, 250).selfComplementary);
+  }
+
+  // ---------- формат проекта (.ChromaZ) ----------
+  void testProjectCompressedRoundTrip() {
+    QByteArray json = "{\"format\":\"ChromaZ\",\"tracks\":[]}";
+    for (int i = 0; i < 200; ++i) json.insert(json.size() - 12, ",\"x\":1");   // повторяющиеся данные хорошо сжимаются
+    QByteArray packed = ProjectIO::pack(json, 9);
+    QVERIFY(packed.size() < json.size());
+    QVERIFY(packed.at(0) != '{');
+    QCOMPARE(ProjectIO::unpack(packed), json);
+  }
+
+  void testProjectLegacyPlainJsonIsAccepted() {
+    const QByteArray json = "{\"format\":\"ChromaZ\",\"tracks\":[]}";
+    QCOMPARE(ProjectIO::unpack(json), json);
+    QCOMPARE(ProjectIO::unpack("  \n\t" + json), "  \n\t" + json);
+    QCOMPARE(ProjectIO::unpack("\xEF\xBB\xBF" + json), json);       // BOM
+  }
+
+  void testProjectCorruptDataIsRejected() {
+    QVERIFY(ProjectIO::unpack(QByteArray()).isEmpty());
+    QVERIFY(ProjectIO::unpack(QByteArray("garbage data that is not a project")).isEmpty());
+    QByteArray packed = ProjectIO::pack(QByteArray(20000, 'x'), 9);
+    packed.truncate(packed.size() / 2);
+    QVERIFY(ProjectIO::unpack(packed).isEmpty());                      // обрезанный поток
+    QByteArray bogus("\x7F\xFF\xFF\xFF\x78\x9C\x00\x00", 8);          // заявлено ~2 ГиБ — не распаковываем
+    QVERIFY(ProjectIO::unpack(bogus).isEmpty());
   }
 
   // ---------- виртуальный гель ----------

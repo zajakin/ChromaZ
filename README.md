@@ -24,6 +24,7 @@ Pre-compiled standalone installers are available on the [Releases](https://githu
 * **Debian / Ubuntu**: [Download ChromaZ_Linux_Install_VERSION_amd64.deb](https://github.com/zajakin/ChromaZ/releases/latest/)
 * **Windows**: [Download ChromaZ_Windows_Install_VERSION.exe](https://github.com/zajakin/ChromaZ/releases/latest/)
 * **macOS**: [Download ChromaZ_macOS_Install_VERSION.dmg](https://github.com/zajakin/ChromaZ/releases/latest/) (Universal binary for Apple Silicon & Intel)
+* **Windows (Chocolatey)**: `choco install chromaz`
 
 ---
 
@@ -39,7 +40,7 @@ Pre-compiled standalone installers are available on the [Releases](https://githu
   * **Banded DP** — Banded dynamic programming for long reads.
   * **Wavefront Alignment (WFA)** — Stepwise wavefront error-expansion algorithm.
   * **Clustal-style progressive MSA** — k-mer distance matrix → UPGMA guide tree → profile-to-profile alignment of all reads together with the reference (no external tools).
-* **Auto-Contig & Reference Support**: Automatic seed selection (the longest read), or custom reference sequence loading (FASTA/GenBank).
+* **Auto-Contig & Reference Support**: Automatic seed selection (the longest read), or a custom reference sequence loaded from FASTA / GenBank / TXT (*File → Load Reference Sequence…*, toolbar button 🎯).
 * **Background, multi-threaded alignment**: reads are aligned in parallel on all CPU cores in a worker thread; the UI stays responsive, with a progress bar and a *Cancel* button.
 * **Consensus refinement**: optional rounds (*Refine* in the toolbar) re-align all reads to the consensus built in the previous round.
 * **Reverse Complement Detection (Auto RC)**: Automatic strand orientation and alignment for complementary reads (`[RC]`) with manual toggle option.
@@ -93,7 +94,8 @@ Pre-compiled standalone installers are available on the [Releases](https://githu
 ### ✍️ Interactive Editing & Navigation
 * **Keyboard Sequence Editing**: Direct base substitution (A, C, G, T, N, `-`), insertion, and deletion with automatic trace coordinate recalculation.
 * **Full Undo / Redo**: Multi-step history stack (`Ctrl+Z` / `Ctrl+Y` or `Ctrl+Shift+Z`) up to 100 actions.
-* **SNP Navigation**: Single Nucleotide Polymorphism detection with quick jumping controls (`◀ SNP` / `SNP ▶`).
+* **SNP Navigation**: Single Nucleotide Polymorphism detection with quick jumping controls (`◀ SNP` / `SNP ▶`); the active SNP column is highlighted across the header and consensus.
+* **Interactive Guide Line**: a vertical crosshair follows the mouse over all tracks, so the same position can be compared in the reference, consensus and every read.
 * **Fast Sequence Search**: Substring match highlighting with automatic viewport auto-scrolling; toolbar search box with *Find ◀ / ▶*.
 * **Deleted Bases**: Deleting a base keeps it (and its trace/quality data) in the read: it is shown as a blank slot, can be restored by typing a letter, and survives re-alignment (the alignment inserts a gap column only if needed). Bases are removed for good only by end trimming.
 * **Recent Files & Autosave**: *File → Open Recent*; the session is autosaved every 2 minutes and can be restored after a crash; unsaved changes are confirmed on exit.
@@ -110,7 +112,7 @@ Pre-compiled standalone installers are available on the [Releases](https://githu
 * **FASTA Export**: Export generated consensus sequence.
 * **PDF Export**: Multi-page PDF report generation with configurable bases per line.
 * **PNG Export**: Save current alignment view as high-resolution raster images.
-* **`.ChromaZ` Projects**: Save and load workspace states (reads, traces, strand orientations, gaps and edits) in JSON format.
+* **`.ChromaZ` Projects**: Save and load workspace states (reads, traces, strand orientations, gaps and edits). Projects are stored as zlib-compressed JSON (typically several times smaller than plain JSON); projects saved by older versions as plain JSON still open. Saving is atomic, so a failure cannot damage an existing project file. Note: older ChromaZ versions cannot open the new compressed format.
 
 ---
 

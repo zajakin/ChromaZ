@@ -19,6 +19,8 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QByteArray>
+#include <QSaveFile>
+#include "projectio.h"
 #include <QLocale>
 #include <QCoreApplication>
 #include <QRegularExpression>
@@ -1018,22 +1020,19 @@ void ContigWidget::showSequenceProperties() {
                           dialog.exec();
 }
 
-void ContigWidget::exportConsensusGenBank(const QString &filePath) {
-  QFile file(filePath);
-  if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return;
+bool ContigWidget::exportConsensusGenBank(const QString &filePath) {
+  QString ungapped;
+  for (int i = 0; i < consensusSeq.length(); ++i) {
+    if (consensusSeq[i] != '-' && consensusSeq[i] != ' ') ungapped += consensusSeq[i].toUpper();
+  }
+  if (ungapped.isEmpty()) return false;   // нечего экспортировать — не создаём пустой файл
+
+  QSaveFile file(filePath);
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
   QTextStream out(&file);
   
-  QString ungapped;
-  std::vector<int> colMap;
-  for (int i = 0; i < consensusSeq.length(); ++i) {
-    if (consensusSeq[i] != '-') {
-      ungapped += consensusSeq[i].toUpper();
-      colMap.push_back(i);
-    }
-  }
-  if (ungapped.isEmpty()) return;
-  
-  QString date = QDateTime::currentDateTime().toString("dd-MMM-yyyy").toUpper();
+  // Дата в формате GenBank (DD-MON-YYYY) всегда на английском, независимо от языка системы.
+  QString date = QLocale::c().toString(QDate::currentDate(), "dd-MMM-yyyy").toUpper();
   out << QString("LOCUS       ChromaZ_Consensus   %1 bp    DNA     linear   UNC %2\n").arg(ungapped.length(), -6).arg(date);
   out << "FEATURES             Location/Qualifiers\n";
   out << QString("     source          1..%1\n").arg(ungapped.length());
@@ -1065,12 +1064,14 @@ void ContigWidget::exportConsensusGenBank(const QString &filePath) {
     out << "\n";
   }
   out << "//\n";
+  out.flush();
+  return file.commit();
 }
 
 void ContigWidget::exportConsensusGenBankPrompt() {
   QString filePath = QFileDialog::getSaveFileName(this, "Export GenBank File", "ChromaZ_Consensus.gbk", "GenBank Files (*.gb *.gbk);;All Files (*)");
-  if (!filePath.isEmpty()) {
-    exportConsensusGenBank(filePath);
+  if (!filePath.isEmpty() && !exportConsensusGenBank(filePath)) {
+    QMessageBox::warning(this, "Export GenBank", "Nothing was exported: there is no consensus sequence or the file could not be written:\n" + filePath);
   }
 }
 
@@ -1374,7 +1375,7 @@ void ContigWidget::renderAlignmentToDevice(QPagedPaintDevice *device, const Prin
       ensureVerticalSpace(singleTrackH);
       auto &track = tracks[t];
       Ab1Data dispData = Ab1Parser::getOrientedData(track.originalData, track.alignment.isReverseComplement);
-      QString readAligned = track.alignment.alignedRead.isEmpty() ? dispData.sequence : track.alignment.alignedRead;
+      const QString &readAligned = track.alignment.alignedRead.isEmpty() ? dispData.sequence : track.alignment.alignedRead;
       
       painter.setFont(labelFont);
       painter.setPen(track.inContig ? Qt::darkBlue : Qt::red);
@@ -1614,7 +1615,7 @@ void ContigWidget::trimVectors() {
   suppressUndo = true; runAlignment(); suppressUndo = false;
 }
 
-bool ContigWidget::saveProject(const QString &filePath) {
+bool ContigWidget::saveProject(const QString &filePath, int compressionLevel) {
   QJsonObject root;
   root["version"] = "1.0";
   root["format"] = "ChromaZ";
@@ -1671,18 +1672,17 @@ bool ContigWidget::saveProject(const QString &filePath) {
   }
   root["tracks"] = tracksArray;
 
-  QFile file(filePath);
+  // QSaveFile пишет во временный файл и подменяет целевой только при успехе: сбой посреди записи
+  // не повредит уже существующий проект.
+  QSaveFile file(filePath);
   if (!file.open(QIODevice::WriteOnly)) return false;
-  
+
   const QByteArray json = QJsonDocument(root).toJson(QJsonDocument::Compact);
-  // Используем qCompress (zlib) для сжатия громоздкого JSON в бинарник
-  const QByteArray compressed = qCompress(json, 9);
-  
-  const bool success = file.write(compressed) == compressed.size();
-  if (success) {
-    setModified(false);
-  }
-  return success;
+  const QByteArray packed = ProjectIO::pack(json, std::clamp(compressionLevel, 0, 9));
+  if (file.write(packed) != packed.size()) { file.cancelWriting(); return false; }
+  // Флаг "изменено" здесь не сбрасывается: так сохраняется и автосохранение сессии.
+  // Сбрасывает его MainWindow после явного сохранения пользователем.
+  return file.commit();
 }
 
 bool ContigWidget::loadProject(const QString &filePath) {
@@ -1690,19 +1690,8 @@ bool ContigWidget::loadProject(const QString &filePath) {
   QFile file(filePath);
   if (!file.open(QIODevice::ReadOnly)) return false;
 
-  QByteArray data = file.readAll();
-  if (data.isEmpty()) return false;
-
-  // Распознавание формата: если начинается с '{' (игнорируя пробелы), это Plain JSON,
-  // иначе это бинарник, сжатый через qCompress.
-  bool isPlainJson = false;
-  for (char c : data) {
-    if (std::isspace(static_cast<unsigned char>(c))) continue;
-    if (c == '{') isPlainJson = true;
-    break;
-  }
-
-  QByteArray json = isPlainJson ? data : qUncompress(data);
+  // Новый формат — JSON, сжатый qCompress; старые сохранения — обычный JSON.
+  const QByteArray json = ProjectIO::unpack(file.readAll());
   if (json.isEmpty()) return false;
 
   QJsonParseError parseError;
@@ -1811,7 +1800,7 @@ void ContigWidget::findSequence(const QString &query, bool forward) {
     pos = 0;
     while ((pos = consU.indexOf(qClean, pos)) != -1) { searchMatches.push_back({SEL_CONSENSUS, pos, qLen}); pos++; }
     for (size_t t = 0; t < tracks.size(); ++t) {
-      QString read = tracks[t].alignment.alignedRead.isEmpty() ? tracks[t].originalData.sequence : tracks[t].alignment.alignedRead;
+      const QString &read = tracks[t].alignment.alignedRead.isEmpty() ? tracks[t].originalData.sequence : tracks[t].alignment.alignedRead;
       pos = 0; const QString readU = read.toUpper();
       while ((pos = readU.indexOf(qClean, pos)) != -1) { searchMatches.push_back({(int)t, pos, qLen}); pos++; }
     }
@@ -1853,7 +1842,7 @@ void ContigWidget::calculateConsensusAndSNPs() {
     
     for (const auto &tr : tracks) {
       if (!tr.inContig) continue;
-      QString read = tr.alignment.alignedRead.isEmpty() ? tr.originalData.sequence : tr.alignment.alignedRead;
+      const QString &read = tr.alignment.alignedRead.isEmpty() ? tr.originalData.sequence : tr.alignment.alignedRead;
       if (col < read.length()) {
         QChar b = read[col].toUpper();
         if (b != '-' && b != 'N' && b != ' ' && b.isLetter()) {
@@ -1923,19 +1912,25 @@ void ContigWidget::jumpPrevSNP() {
   update();
 }
 
-void ContigWidget::exportConsensusFasta(const QString &filePath) {
-  QFile file(filePath);
-  if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-    QTextStream out(&file); out << ">ChromaZ_Consensus\n" << consensusSeq << "\n";
-  }
+bool ContigWidget::exportConsensusFasta(const QString &filePath) {
+  QString seq = consensusSeq;
+  seq.remove('-').remove(' ');          // консенсус без колонок-гэпов
+  if (seq.isEmpty()) return false;
+  QSaveFile file(filePath);
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+  QTextStream out(&file);
+  out << ">ChromaZ_Consensus\n";
+  for (int i = 0; i < seq.length(); i += 70) out << seq.mid(i, 70) << "\n";
+  out.flush();
+  return file.commit();
 }
 
-void ContigWidget::exportViewImage(const QString &filePath) {
+bool ContigWidget::exportViewImage(const QString &filePath) {
   QImage img(size(), QImage::Format_ARGB32);
-  if (img.isNull()) { QMessageBox::warning(this, "Export View PNG", "Image is too large to export. Zoom out and try again."); return; }
+  if (img.isNull()) return false;       // слишком большое изображение (подробности покажет вызывающий код)
   img.fill(Qt::white);
   { QPainter p(&img); render(&p); }
-  if (!img.save(filePath)) QMessageBox::warning(this, "Export View PNG", "Failed to save: " + filePath);
+  return img.save(filePath);
 }
 
 void ContigWidget::fitToWindowHeight(int viewportHeight) {
@@ -1966,8 +1961,17 @@ void ContigWidget::updateLayoutGeometry() {
   resize(reqWidth, reqHeight);
 }
 
-void ContigWidget::setReference(const QString &seq) {
-  pushUndoState(); referenceSeq = seq; isAutoReference = false; updateLayoutGeometry(); update();
+void ContigWidget::setReference(const QString &seq, bool realign) {
+  QString clean = seq.toUpper();
+  clean.remove('-').remove(' ').remove('\n').remove('\r');
+  if (clean.isEmpty()) return;
+  abortAlignment();   // иначе результат прерванного задания перезаписал бы новый референс
+  pushUndoState();
+  referenceSeq = clean;
+  isAutoReference = false;
+  updateLayoutGeometry();
+  update();
+  if (realign && !tracks.empty()) { suppressUndo = true; runAlignment(); suppressUndo = false; }
 }
 
 void ContigWidget::clearAll() {
@@ -2063,6 +2067,7 @@ void ContigWidget::onAlignmentFinished() {
 }
 
 void ContigWidget::applyAlignmentResult(AlignJobOutput &out) {
+  dragSourceTrackIdx = -2;   // порядок ридов ниже может измениться — прерываем возможное перетаскивание
   QString selectedTrackPath;
   if (selTrack >= 0 && selTrack < static_cast<int>(tracks.size()))
     selectedTrackPath = tracks[static_cast<size_t>(selTrack)].filePath;
@@ -2204,6 +2209,7 @@ bool ContigWidget::exportPdfReport(const QString &path, int basesPerLine) {
   opt.basesPerLine = std::clamp(basesPerLine, 10, 200);
   opt.includeOrfA = showOrfA;
   opt.includeOrfB = showOrfB;
+  QFile::remove(path);
   {
     QPdfWriter writer(path);
     writer.setPageSize(QPageSize(QPageSize::A4));
@@ -2211,7 +2217,7 @@ bool ContigWidget::exportPdfReport(const QString &path, int basesPerLine) {
     writer.setResolution(300);
     renderAlignmentToDevice(&writer, opt);
   }
-  return QFileInfo(path).exists();
+  return QFileInfo(path).size() > 0;
 }
 
 std::vector<int> ContigWidget::cutPositions(const RestEnzyme &enz, const QString &seq) const {
@@ -2356,7 +2362,7 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
   std::vector<TrackRange> ranges(tracks.size());
   for (size_t t = 0; t < tracks.size(); ++t) {
     if (!tracks[t].inContig) continue;
-    QString read = tracks[t].alignment.alignedRead.isEmpty() ? tracks[t].originalData.sequence : tracks[t].alignment.alignedRead;
+    const QString &read = tracks[t].alignment.alignedRead.isEmpty() ? tracks[t].originalData.sequence : tracks[t].alignment.alignedRead;
     for (int i = 0; i < read.length(); ++i) {
       if (read[i] != '-' && read[i] != ' ') { if (ranges[t].first == -1) ranges[t].first = i; ranges[t].last = i; }
     }
@@ -2371,12 +2377,12 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
   for (int col = 0; col < maxCols; ++col) {
     int x = leftMarginWidth + col * scaleX;
     QChar targetBase = '?'; bool colIsMatch = true; int activeCount = 0;
-    bool isSnp = std::find(snpColumns.begin(), snpColumns.end(), col) != snpColumns.end();
+    bool isSnp = std::binary_search(snpColumns.begin(), snpColumns.end(), col);   // snpColumns отсортирован по возрастанию
     if (refFirst != -1 && col >= refFirst && col <= refLast) { QChar c = referenceSeq[col].toUpper(); if (c != '-') { targetBase = c; activeCount++; } }
     for (size_t t = 0; t < tracks.size(); ++t) {
       if (!tracks[t].inContig) continue;
       if (ranges[t].first != -1 && col >= ranges[t].first && col <= ranges[t].last) {
-        QString read = tracks[t].alignment.alignedRead.isEmpty() ? tracks[t].originalData.sequence : tracks[t].alignment.alignedRead;
+        const QString &read = tracks[t].alignment.alignedRead.isEmpty() ? tracks[t].originalData.sequence : tracks[t].alignment.alignedRead;
         QChar c = read[col].toUpper();
         if (c == '-' || c == ' ') { colIsMatch = false; break; }
         if (targetBase == '?') { targetBase = c; activeCount++; } else if (c != targetBase) { colIsMatch = false; break; } else { activeCount++; }
@@ -2533,7 +2539,7 @@ void ContigWidget::paintEvent(QPaintEvent *event) {
     
     auto &track = tracks[t];
     Ab1Data dispData = Ab1Parser::getOrientedData(track.originalData, track.alignment.isReverseComplement);
-    QString readAligned = track.alignment.alignedRead.isEmpty() ? dispData.sequence : track.alignment.alignedRead;
+    const QString &readAligned = track.alignment.alignedRead.isEmpty() ? dispData.sequence : track.alignment.alignedRead;
     drawSequenceCoordinates(currentY + 5, readAligned, Qt::gray);
     
     struct BasePoint { double x; int col; };
@@ -2645,6 +2651,10 @@ void ContigWidget::dropEvent(QDropEvent *event) {
   for (const QUrl &url : event->mimeData()->urls()) {
     QString filePath = url.toLocalFile(); if (filePath.isEmpty()) continue;
     if (filePath.endsWith(".ChromaZ", Qt::CaseInsensitive)) {
+      if (modifiedFlag && !tracks.empty() &&
+          QMessageBox::question(this, "Open Project",
+              "Opening a project replaces the current workspace, which has unsaved changes.\nContinue?",
+              QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) return;
       if (!loadProject(filePath)) {
         QMessageBox::warning(this, "Open Project",
                              "The project could not be loaded. The file may be unreadable, corrupted, or not a ChromaZ project.");
@@ -2746,12 +2756,21 @@ void ContigWidget::keyPressEvent(QKeyEvent *event) {
       else if (oldChar == '-' && newChar != '-') {
         int origIdx = isRC ? ((int)origSeq.length() - rawIdx) : rawIdx;
         if (origIdx >= 0 && origIdx <= origSeq.length()) origSeq.insert(origIdx, origNewChar);
-        int qIdx = isRC ? ((int)qScores.size() - rawIdx) : rawIdx;
-        if (qIdx >= 0 && qIdx <= (int)qScores.size()) qScores.insert(qScores.begin() + qIdx, 30);
-        int pIdx = isRC ? ((int)bPos.size() - rawIdx) : rawIdx;
-        if (pIdx >= 0 && pIdx <= (int)bPos.size()) {
-          int posVal = (pIdx > 0 && pIdx - 1 < (int)bPos.size()) ? bPos[pIdx - 1] + 10 : 10;
-          bPos.insert(bPos.begin() + pIdx, posVal);
+        // У ридов без хроматограммы (FASTA/TXT) массивов качества и пиков нет — не создаём их из одного элемента.
+        if (!qScores.empty()) {
+          int qIdx = isRC ? ((int)qScores.size() - rawIdx) : rawIdx;
+          if (qIdx >= 0 && qIdx <= (int)qScores.size()) qScores.insert(qScores.begin() + qIdx, 30);
+        }
+        if (!bPos.empty()) {
+          int pIdx = isRC ? ((int)bPos.size() - rawIdx) : rawIdx;
+          if (pIdx >= 0 && pIdx <= (int)bPos.size()) {
+            // Пик новой базы — строго между соседними пиками, чтобы не нарушать монотонность трассы.
+            int posVal;
+            if (pIdx > 0 && pIdx < (int)bPos.size()) posVal = (bPos[pIdx - 1] + bPos[pIdx]) / 2;
+            else if (pIdx > 0) posVal = bPos[pIdx - 1] + 10;
+            else posVal = std::max(0, bPos[0] - 10);
+            bPos.insert(bPos.begin() + pIdx, posVal);
+          }
         }
       } else if (oldChar != '-' && newChar == '-') {
         read[col] = ' ';
@@ -2760,13 +2779,15 @@ void ContigWidget::keyPressEvent(QKeyEvent *event) {
       }
       calculateConsensusAndSNPs(); updateLayoutGeometry(); update();
     } else if (event->key() == Qt::Key_Backspace || event->key() == Qt::Key_Delete) {
-      pushUndoState(); QChar oldChar = read[col];
-      if (oldChar != '-' && oldChar != ' ') {
+      QChar oldChar = read[col];
+      if (oldChar == ' ') return;   // основание уже удалено; слот хранит данные трассы — колонку не убираем
+      pushUndoState();
+      if (oldChar != '-') {
         read[col] = ' ';
         int origIdx = isRC ? ((int)origSeq.length() - 1 - rawIdx) : rawIdx;
         if (origIdx >= 0 && origIdx < origSeq.length()) origSeq[origIdx] = ' ';
       } else {
-        read.remove(col, 1);
+        read.remove(col, 1);        // обычный гэп: схлопываем колонку
       }
       calculateConsensusAndSNPs(); updateLayoutGeometry(); update();
     }

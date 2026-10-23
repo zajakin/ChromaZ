@@ -93,6 +93,7 @@ add_executable(ChromaZ WIN32
     tmcalc.cpp
     tmcalc.h
     gelmath.h
+    projectio.h
     virtualgel.cpp
     virtualgel.h
     minimapwidget.cpp
@@ -129,6 +130,7 @@ add_executable(ChromaZTests
     tmcalc.cpp
     tmcalc.h
     gelmath.h
+    projectio.h
 )
 
 target_link_libraries(ChromaZTests PRIVATE Qt6::Core Qt6::Test Threads::Threads)

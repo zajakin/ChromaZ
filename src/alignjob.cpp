@@ -19,7 +19,10 @@ QString fromStd(const std::string &s) { return QString::fromStdString(s); }
 
 // Пул потоков на std::thread: fn(i) для i = 0..n-1.
 bool parallelFor(int n, int threads, const std::atomic<bool> &cancel, const std::function<void(int)> &fn) {
-  int T = threads > 0 ? threads : (int)std::thread::hardware_concurrency();
+  // По умолчанию не больше 8 потоков: каждый держит свои матрицы динамического программирования
+  // (для длинных контигов — десятки МБ), поэтому на многоядерных машинах память растёт быстро.
+  // Явное значение (поле Threads / --threads) не ограничивается.
+  int T = threads > 0 ? threads : std::min(8, (int)std::thread::hardware_concurrency());
   if (T <= 0) T = 2;
   T = std::max(1, std::min(T, n));
   std::atomic<int> next{0};
