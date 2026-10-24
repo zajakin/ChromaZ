@@ -3,12 +3,12 @@
   <metadata>
     <id>chromaz</id>
     <version>[[VERSION]]</version>
-    <packageSourceUrl>https://github.com/zajakin/ChromaZ</packageSourceUrl>
+    <packageSourceUrl>https://github.com/zajakin/ChromaZ/releases</packageSourceUrl>
     <owners>Pawel Zayakin</owners>
     <title>ChromaZ</title>
     <authors>Pawel Zayakin</authors>
     <projectUrl>https://github.com/zajakin/ChromaZ</projectUrl>
-    <iconUrl>https://raw.githubusercontent.com/zajakin/ChromaZ/main/chromaz.png</iconUrl>
+    <iconUrl>https://cdn.jsdelivr.net/gh/zajakin/ChromaZ@dcd8ec6623c026559533bc924af6a51fa7e17cf1/chromaz.png</iconUrl>
     <copyright>2026 Pawel Zayakin</copyright>
     <licenseUrl>https://github.com/zajakin/ChromaZ/blob/main/LICENSE</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>

@@ -337,12 +337,6 @@ jobs:
         path: dist
         merge-multiple: true
 
-    - name: Compute SHA-256 checksums
-      run: |
-        cd dist
-        sha256sum * > SHA256SUMS.txt
-        cat SHA256SUMS.txt
-
     - name: Create draft release with all installers
       uses: softprops/action-gh-release@v3
       with:
