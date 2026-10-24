@@ -61,6 +61,7 @@
 #include "virtualgel.h"
 #include <map>
 #include <cmath>
+#include <limits>
 #include <algorithm>
 #include <cctype>
 
@@ -1678,7 +1679,15 @@ bool ContigWidget::saveProject(const QString &filePath, int compressionLevel) {
   if (!file.open(QIODevice::WriteOnly)) return false;
 
   const QByteArray json = QJsonDocument(root).toJson(QJsonDocument::Compact);
+  if (static_cast<quint64>(json.size()) > ProjectIO::MaxUncompressedProjectBytes) {
+    file.cancelWriting();
+    return false;
+  }
   const QByteArray packed = ProjectIO::pack(json, std::clamp(compressionLevel, 0, 9));
+  if (packed.isEmpty() || packed.size() > ProjectIO::MaxProjectFileBytes) {
+    file.cancelWriting();
+    return false;
+  }
   if (file.write(packed) != packed.size()) { file.cancelWriting(); return false; }
   // Флаг "изменено" здесь не сбрасывается: так сохраняется и автосохранение сессии.
   // Сбрасывает его MainWindow после явного сохранения пользователем.
@@ -1686,95 +1695,271 @@ bool ContigWidget::saveProject(const QString &filePath, int compressionLevel) {
 }
 
 bool ContigWidget::loadProject(const QString &filePath) {
-  abortAlignment();
   QFile file(filePath);
   if (!file.open(QIODevice::ReadOnly)) return false;
-
-  // Новый формат — JSON, сжатый qCompress; старые сохранения — обычный JSON.
-  const QByteArray json = ProjectIO::unpack(file.readAll());
+  
+  // Check the on-disk size before readAll(), so an arbitrary huge file is not
+  // loaded into memory. Do not interrupt the current alignment yet.
+  const qint64 fileSize = file.size();
+  if (fileSize <= 0 || fileSize > ProjectIO::MaxProjectFileBytes) return false;
+  
+  const QByteArray raw = file.readAll();
+  if (file.error() != QFileDevice::NoError || raw.size() != fileSize)
+    return false;
+  
+  const QByteArray json = ProjectIO::unpack(raw);
   if (json.isEmpty()) return false;
-
+  
   QJsonParseError parseError;
   const QJsonDocument doc = QJsonDocument::fromJson(json, &parseError);
-  if (parseError.error != QJsonParseError::NoError || !doc.isObject()) return false;
-
-  const QJsonObject root = doc.object();
-  if (root.value("format").toString() != "ChromaZ" || !root.value("tracks").isArray())
+  if (parseError.error != QJsonParseError::NoError || !doc.isObject())
     return false;
-
-  // Validate the project before clearing the currently open workspace.
+  
+  const QJsonObject root = doc.object();
+  if (root.value("format").toString() != "ChromaZ" ||
+      !root.value("tracks").isArray()) {
+      return false;
+  }
+  
+  // Resource limits for individual structures, in addition to the file limits.
+  constexpr int MaxTracks = 10000;
+  constexpr int MaxSequenceLength = 10000000;
+  constexpr int MaxAlignmentLength = 20000000;
+  constexpr qsizetype MaxVectorItems = 5000000;
+  constexpr quint64 MaxTotalVectorItems = 20000000;
+  quint64 totalVectorItems = 0;
+  
   const QJsonArray tracksArray = root.value("tracks").toArray();
+  if (tracksArray.size() > MaxTracks) return false;
+  
+  // These readers distinguish a missing optional field from a field with the
+  // wrong JSON type. Missing fields retain defaults for backward compatibility.
+  auto readString = [](const QJsonObject &obj, const QString &key,
+                       const QString &fallback, QString &out) -> bool {
+                         if (!obj.contains(key)) {
+                           out = fallback;
+                           return true;
+                         }
+                         const QJsonValue value = obj.value(key);
+                         if (!value.isString()) return false;
+                         out = value.toString();
+                         return true;
+                       };
+  
+  auto readBool = [](const QJsonObject &obj, const QString &key,
+                     bool fallback, bool &out) -> bool {
+                       if (!obj.contains(key)) {
+                         out = fallback;
+                         return true;
+                       }
+                       const QJsonValue value = obj.value(key);
+                       if (!value.isBool()) return false;
+                       out = value.toBool();
+                       return true;
+                     };
+  
+  auto readNumber = [](const QJsonObject &obj, const QString &key,
+                       double fallback, double &out) -> bool {
+                         if (!obj.contains(key)) {
+                           out = fallback;
+                           return true;
+                         }
+                         const QJsonValue value = obj.value(key);
+                         if (!value.isDouble()) return false;
+                         const double number = value.toDouble();
+                         if (!std::isfinite(number) || std::abs(number) > 1.0e12) return false;
+                         out = number;
+                         return true;
+                       };
+  
+  auto readInt = [](const QJsonObject &obj, const QString &key,
+                    int fallback, int &out) -> bool {
+                      if (!obj.contains(key)) {
+                        out = fallback;
+                        return true;
+                      }
+                      const QJsonValue value = obj.value(key);
+                      if (!value.isDouble()) return false;
+                      const double number = value.toDouble();
+                      if (!std::isfinite(number) || std::floor(number) != number ||
+                          number < static_cast<double>(std::numeric_limits<int>::min()) ||
+                          number > static_cast<double>(std::numeric_limits<int>::max())) {
+                        return false;
+                      }
+                      out = static_cast<int>(number);
+                      return true;
+                    };
+  
+  auto readIntArray = [MaxVectorItems, MaxTotalVectorItems,
+                       &totalVectorItems](const QJsonObject &obj,
+                                          const QString &key,
+                                          std::vector<int> &out) -> bool {
+                                            out.clear();
+                                            if (!obj.contains(key)) return true;
+                                            const QJsonValue value = obj.value(key);
+                                            if (!value.isArray()) return false;
+                                            
+                                            const QJsonArray array = value.toArray();
+                                            if (array.size() > MaxVectorItems) return false;
+                                            const quint64 count = static_cast<quint64>(array.size());
+                                            if (count > MaxTotalVectorItems - totalVectorItems) return false;
+                                            totalVectorItems += count;
+                                            out.reserve(static_cast<size_t>(array.size()));
+                                            
+                                            for (const QJsonValue &item : array) {
+                                              if (!item.isDouble()) return false;
+                                              const double number = item.toDouble();
+                                              if (!std::isfinite(number) || std::floor(number) != number ||
+                                                  number < 0.0 ||
+                                                  number > static_cast<double>(std::numeric_limits<int>::max())) {
+                                                return false;
+                                              }
+                                              out.push_back(static_cast<int>(number));
+                                            }
+                                            return true;
+                                          };
+  
+  // Parse all global state into temporary variables. The live workspace is not
+  // changed unless the entire project passes validation.
+  QString newReferenceSeq;
+  QString newConsensusSeq;
+  bool newIsAutoReference = false;
+  bool newUseIupacConsensus = false;
+  bool newAutoRCEnabled = true;
+  bool newShowOrfA = true;
+  bool newShowOrfB = true;
+  double savedThreshold = 45.0;
+  double savedScaleX = 14.0;
+  double savedScaleY = 0.05;
+  int savedTranslationTable = 0;
+  int savedAlgorithm = 0;
+  int savedTrackHeight = 120;
+  int savedLeftMarginWidth = 220;
+  
+  if (!readString(root, "referenceSeq", QString(), newReferenceSeq) ||
+      !readString(root, "consensusSeq", QString(), newConsensusSeq) ||
+      !readBool(root, "isAutoReference", false, newIsAutoReference) ||
+      !readBool(root, "useIupacConsensus", false, newUseIupacConsensus) ||
+      !readBool(root, "autoRCEnabled", true, newAutoRCEnabled) ||
+      !readBool(root, "showOrfA", true, newShowOrfA) ||
+      !readBool(root, "showOrfB", true, newShowOrfB) ||
+      !readNumber(root, "minIdentityThreshold", 45.0, savedThreshold) ||
+      !readNumber(root, "scaleX", 14.0, savedScaleX) ||
+      !readNumber(root, "scaleY", 0.05, savedScaleY) ||
+      !readInt(root, "translationTable", 0, savedTranslationTable) ||
+      !readInt(root, "currentAlgorithm", 0, savedAlgorithm) ||
+      !readInt(root, "trackHeight", 120, savedTrackHeight) ||
+      !readInt(root, "leftMarginWidth", 220, savedLeftMarginWidth)) {
+      return false;
+  }
+  
+  std::vector<AlignedTrack> newTracks;
+  newTracks.reserve(static_cast<size_t>(tracksArray.size()));
+  
   for (const QJsonValue &value : tracksArray) {
     if (!value.isObject()) return false;
     const QJsonObject trackObject = value.toObject();
-    if (!trackObject.value("originalData").isObject() ||
-        !trackObject.value("originalData").toObject().value("sequence").isString())
-      return false;
-  }
-
-  clearAll();
-  referenceSeq = root.value("referenceSeq").toString();
-  consensusSeq = root.value("consensusSeq").toString();
-  isAutoReference = root.value("isAutoReference").toBool();
-
-  const double savedThreshold = root.value("minIdentityThreshold").toDouble(45.0);
-  minIdentityThreshold = std::isfinite(savedThreshold)
-                           ? std::clamp(savedThreshold, 0.0, 100.0) : 45.0;
-  useIupacConsensus = root.value("useIupacConsensus").toBool(false);
-  translationTable = std::clamp(root.value("translationTable").toInt(0), 0, 2);
-  const int algoIndex = root.value("currentAlgorithm").toInt(0);
-  currentAlgorithm = static_cast<AlignmentAlgorithm>(std::clamp(algoIndex, 0, 7));
-  autoRCEnabled = root.value("autoRCEnabled").toBool(true);
-  showOrfA = root.value("showOrfA").toBool(true);
-  showOrfB = root.value("showOrfB").toBool(true);
-
-  const double savedScaleX = root.value("scaleX").toDouble(14.0);
-  const double savedScaleY = root.value("scaleY").toDouble(0.05);
-  scaleX = std::isfinite(savedScaleX) ? std::clamp(savedScaleX, 2.0, 100.0) : 14.0;
-  scaleY = std::isfinite(savedScaleY) ? std::clamp(savedScaleY, 0.001, 10.0) : 0.05;
-  trackHeight = std::clamp(root.value("trackHeight").toInt(120), 60, 1000);
-  leftMarginWidth = std::clamp(root.value("leftMarginWidth").toInt(220), 80, 800);
-
-  auto jsonToVec = [](const QJsonArray &array) {
-    std::vector<int> result;
-    result.reserve(static_cast<size_t>(array.size()));
-    for (const QJsonValue &item : array) result.push_back(item.toInt());
-    return result;
-  };
-
-  for (const QJsonValue &value : tracksArray) {
-    const QJsonObject trackObject = value.toObject();
+    
+    const QJsonValue originalValue = trackObject.value("originalData");
+    if (!originalValue.isObject()) return false;
+    const QJsonObject ab1Object = originalValue.toObject();
+    
+    // A sequence is required; optional arrays may be absent in older projects.
+    const QJsonValue sequenceValue = ab1Object.value("sequence");
+    if (!sequenceValue.isString()) return false;
+    
     AlignedTrack track;
-    track.filePath = trackObject.value("filePath").toString();
-    track.fileName = trackObject.value("fileName").toString();
-    track.inContig = trackObject.value("inContig").toBool(true);
-    track.overrideRC = trackObject.value("overrideRC").toBool(false);
-
-    const QJsonObject ab1Object = trackObject.value("originalData").toObject();
-    track.originalData.sequence = ab1Object.value("sequence").toString();
-    track.originalData.isValid = ab1Object.value("isValid").toBool(true);
-    track.originalData.traceA = jsonToVec(ab1Object.value("traceA").toArray());
-    track.originalData.traceC = jsonToVec(ab1Object.value("traceC").toArray());
-    track.originalData.traceG = jsonToVec(ab1Object.value("traceG").toArray());
-    track.originalData.traceT = jsonToVec(ab1Object.value("traceT").toArray());
-    track.originalData.basePositions = jsonToVec(ab1Object.value("basePositions").toArray());
-    track.originalData.qualityScores = jsonToVec(ab1Object.value("qualityScores").toArray());
-
-    const QJsonObject alignmentObject = trackObject.value("alignment").toObject();
-    track.alignment.alignedRef = alignmentObject.value("alignedRef").toString();
-    track.alignment.alignedRead = alignmentObject.value("alignedRead").toString();
-    track.alignment.score = alignmentObject.value("score").toInt();
-    track.alignment.identity = alignmentObject.value("identity").toDouble();
-    track.alignment.isReverseComplement = alignmentObject.value("isReverseComplement").toBool();
-    tracks.push_back(std::move(track));
+    if (!readString(trackObject, "filePath", QString(), track.filePath) ||
+        !readString(trackObject, "fileName", QString(), track.fileName) ||
+        !readBool(trackObject, "inContig", true, track.inContig) ||
+        !readBool(trackObject, "overrideRC", false, track.overrideRC) ||
+        !readBool(ab1Object, "isValid", true, track.originalData.isValid)) {
+        return false;
+    }
+    
+    track.originalData.sequence = sequenceValue.toString();
+    if (track.originalData.sequence.size() > MaxSequenceLength) return false;
+    
+    if (!readIntArray(ab1Object, "traceA", track.originalData.traceA) ||
+        !readIntArray(ab1Object, "traceC", track.originalData.traceC) ||
+        !readIntArray(ab1Object, "traceG", track.originalData.traceG) ||
+        !readIntArray(ab1Object, "traceT", track.originalData.traceT) ||
+        !readIntArray(ab1Object, "basePositions", track.originalData.basePositions) ||
+        !readIntArray(ab1Object, "qualityScores", track.originalData.qualityScores)) {
+        return false;
+    }
+    
+    QJsonObject alignmentObject;
+    const QJsonValue alignmentValue = trackObject.value("alignment");
+    if (!alignmentValue.isUndefined()) {
+      if (!alignmentValue.isObject()) return false;
+      alignmentObject = alignmentValue.toObject();
+    }
+    
+    if (!readString(alignmentObject, "alignedRef", QString(), track.alignment.alignedRef) ||
+        !readString(alignmentObject, "alignedRead", QString(), track.alignment.alignedRead) ||
+        !readInt(alignmentObject, "score", 0, track.alignment.score) ||
+        !readNumber(alignmentObject, "identity", 0.0, track.alignment.identity) ||
+        !readBool(alignmentObject, "isReverseComplement", false,
+                  track.alignment.isReverseComplement)) {
+      return false;
+    }
+    
+    if (!std::isfinite(track.alignment.identity) ||
+        track.alignment.identity < 0.0 || track.alignment.identity > 100.0 ||
+        track.alignment.alignedRef.size() > MaxAlignmentLength ||
+        track.alignment.alignedRead.size() > MaxAlignmentLength) {
+      return false;
+    }
+    // Some valid tracks have alignedRef populated but alignedRead empty after a
+    // failed read alignment. If both are present, their column counts must match.
+    if (!track.alignment.alignedRef.isEmpty() &&
+        !track.alignment.alignedRead.isEmpty() &&
+        track.alignment.alignedRef.size() != track.alignment.alignedRead.size()) {
+      return false;
+    }
+    
+    newTracks.push_back(std::move(track));
   }
-
+  
+  // Everything is parsed and validated. Only now cancel background work and
+  // commit the new project, leaving the old workspace intact on any failure.
+  abortAlignment();
+  referenceSeq = std::move(newReferenceSeq);
+  consensusSeq = std::move(newConsensusSeq);
+  isAutoReference = newIsAutoReference;
+  minIdentityThreshold = std::clamp(savedThreshold, 0.0, 100.0);
+  useIupacConsensus = newUseIupacConsensus;
+  translationTable = std::clamp(savedTranslationTable, 0, 2);
+  currentAlgorithm = static_cast<AlignmentAlgorithm>(std::clamp(savedAlgorithm, 0, 7));
+  autoRCEnabled = newAutoRCEnabled;
+  showOrfA = newShowOrfA;
+  showOrfB = newShowOrfB;
+  scaleX = std::clamp(savedScaleX, 2.0, 100.0);
+  scaleY = std::clamp(savedScaleY, 0.001, 10.0);
+  trackHeight = std::clamp(savedTrackHeight, 60, 1000);
+  leftMarginWidth = std::clamp(savedLeftMarginWidth, 80, 800);
+  tracks = std::move(newTracks);
+  
+  snpColumns.clear();
+  currentSnpIdx = -1;
+  selTrack = SEL_NONE;
+  selStartCol = -1;
+  selEndCol = -1;
+  isSelecting = false;
+  dragSourceTrackIdx = -2;
+  hoverCol = -1;
+  searchMatches.clear();
+  currentMatchIdx = -1;
+  lastSearchQuery.clear();
+  undoStack.clear();
+  redoStack.clear();
+  
   calculateConsensusAndSNPs();
   fitToWindowHeight();
   updateLayoutGeometry();
   update();
-  undoStack.clear();
-  redoStack.clear();
+  
   emit autoRCChanged(autoRCEnabled);
   emit showOrfAChanged(showOrfA);
   emit showOrfBChanged(showOrfB);
